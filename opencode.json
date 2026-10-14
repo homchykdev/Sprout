@@ -1,0 +1,27 @@
+{
+  // Validate after editing: opencode run "test"
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": ["docs/BRIEF.md"],
+  "mcp": {
+    // Give the agent eyes: drives a real browser, screenshots, console
+    "playwright": { "type": "local", "command": ["npx", "@playwright/mcp@latest"], "enabled": true },
+    // Real shadcn component registry instead of guessing from memory
+    "shadcn": { "type": "local", "command": ["npx", "shadcn@latest", "mcp"], "enabled": true }
+  },
+  "permission": {
+    "edit": "allow",
+    "bash": {
+      "*": "ask",
+      "git status*": "allow",
+      "git diff*": "allow",
+      "git log*": "allow",
+      "git add*": "allow",
+      "git commit*": "allow",
+      "pnpm *": "allow",
+      "npm run *": "allow",
+      "ls*": "allow",
+      "git push*": "ask",
+      "rm -rf*": "deny"
+    }
+  }
+}
