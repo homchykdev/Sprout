@@ -279,7 +279,7 @@ function VideoTranscode() {
   const s = useApp();
   const [scale, setScale] = useState<FfmpegScale>("1080p");
   const [fps, setFps] = useState("60");
-  const [codec, setCodec] = useState<FfmpegCodec>("av1-nvenc");
+  const [codec, setCodec] = useState<FfmpegCodec>("av1-cpu");
   // Null = not editing: textarea mirrors the store; any keystroke takes over.
   const [draft, setDraft] = useState<string | null>(null);
   const cmd = draft ?? joinFfmpegCmd(s.ffmpegOptions);
@@ -300,7 +300,7 @@ function VideoTranscode() {
   const reset = () => {
     setScale("1080p");
     setFps("60");
-    setCodec("av1-nvenc");
+    setCodec("av1-cpu");
     setDraft(null);
     s.set({ ffmpegOptions: [...DEFAULT_FFMPEG_OPTIONS], ffmpegOut: DEFAULT_FFMPEG_OUT });
     toast.success("Параметры перекодирования сброшены");
@@ -378,8 +378,8 @@ function VideoTranscode() {
       </details>
       {isNvencOptions(s.ffmpegOptions) && (
         <p className="text-sm text-muted-foreground">
-          В документации облака GPU не заявлен: если NVIDIA там нет, повторю конвертацию на CPU
-          (libsvtav1) автоматически.
+          Проверка через playground показала: NVIDIA в облаке нет. Такую задачу всё равно попробую,
+          а при ошибке автоматически повторю на CPU (libsvtav1).
         </p>
       )}
       <div className="flex justify-end">

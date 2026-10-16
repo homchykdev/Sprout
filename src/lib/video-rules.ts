@@ -5,27 +5,21 @@ export const VIDEO_MAX_SEC = 30;
 export const VIDEO_MAX_BYTES = 50 * 1024 * 1024;
 
 /**
- * Default cloud-transcode options (argv): 1080x1920/60fps AV1 via NVIDIA NVENC.
- * The cloud has no documented GPU (see docs/plan.md), so `cpuFallbackOptions`
- * in ffmpeg.ts retries with a CPU encoder when this fails. Editable in Settings.
+ * Default cloud-transcode options (argv): 1080x1920/60fps AV1 on CPU.
+ * Playground check confirmed no NVIDIA on ffmpeg-api.com, so NVENC is only
+ * an opt-in preset (with automatic CPU retry). Editable in Settings.
  */
 export const DEFAULT_FFMPEG_OPTIONS: string[] = [
   "-vf",
   "scale=1080:1920,fps=60",
   "-c:v",
-  "av1_nvenc",
-  "-rc",
-  "vbr",
-  "-cq",
+  "libsvtav1",
+  "-crf",
   "38",
   "-b:v",
   "0",
   "-preset",
-  "p7",
-  "-tune",
-  "hq",
-  "-spatial-aq",
-  "1",
+  "6",
   "-pix_fmt",
   "yuv420p",
 ];
