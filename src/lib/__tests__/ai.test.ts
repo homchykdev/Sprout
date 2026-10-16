@@ -20,7 +20,7 @@ describe("canonical muscle passthrough", () => {
   it("accepts our own muscle keys (Gemini returns these)", () => {
     expect(mapMuscles(["biceps", "front-deltoids"])).toEqual(["biceps", "front-deltoids"]);
   });
-  it("still maps English MuscleWiki names", () => {
+  it("still maps English muscle names", () => {
     expect(mapMuscles(["Biceps", "Chest"])).toEqual(["biceps", "chest"]);
   });
 });

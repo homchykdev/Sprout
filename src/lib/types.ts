@@ -43,7 +43,7 @@ export interface Exercise {
   /** User-uploaded photo/video stored on device (media.ts). */
   mediaId?: string | undefined;
   emoji?: string | undefined;
-  source: "seed" | "musclewiki" | "custom" | "ai";
+  source: "seed" | "custom" | "ai";
 }
 
 export interface WorkoutItem {

@@ -21,7 +21,7 @@ export function parseLink(raw: string): LinkKind | null {
     if (id) return { type: "youtube", id, ...(tt != null && { t: tt }) };
   }
   if (host === "vimeo.com" || host === "player.vimeo.com") { const id = u.pathname.match(/(\d+)/)?.[1]; if (id) return { type: "vimeo", id }; }
-  if (/\.(mp4|webm|mov|m4v|ogg)$/i.test(u.pathname) || u.hostname.includes("api.musclewiki.com")) return { type: "video", url: s };
+  if (/\.(mp4|webm|mov|m4v|ogg)$/i.test(u.pathname)) return { type: "video", url: s };
   if (/\.(jpe?g|png|gif|webp|avif)$/i.test(u.pathname)) return { type: "image", url: s };
   return { type: "iframe", url: s };
 }

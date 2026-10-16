@@ -16,8 +16,8 @@ export const SECTIONS = {
   },
   keys: {
     label: "Ключи",
-    hint: "MuscleWiki, ИИ и ffmpeg",
-    keys: ["mwKey", "ai", "ffmpegKey", "ffmpegOptions", "ffmpegOut"],
+    hint: "ИИ и ffmpeg",
+    keys: ["ai", "ffmpegKey", "ffmpegOptions", "ffmpegOut"],
   },
 } as const satisfies Record<string, { label: string; hint: string; keys: (keyof AppState)[] }>;
 export type SectionId = keyof typeof SECTIONS;
@@ -85,7 +85,7 @@ export function countRecords(
       return { count: n, label: "раздела настроек" };
     }
     case "keys": {
-      const n = (data.mwKey ? 1 : 0) + (data.ai?.keys?.length ?? 0) + (data.ffmpegKey ? 1 : 0);
+      const n = (data.ai?.keys?.length ?? 0) + (data.ffmpegKey ? 1 : 0);
       return { count: n, label: "ключей" };
     }
   }

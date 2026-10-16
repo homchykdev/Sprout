@@ -1,8 +1,6 @@
 import { aiSplitWorkout, askAi, pingAi } from "./ai.functions";
 import { promoteKey } from "./ai-keys";
 import { ffmpegPing } from "./ffmpeg.functions";
-import { mwGet, mwMediaToken, mwSearch } from "./musclewiki.functions";
-import { useMwCache } from "./mw-cache";
 import { useApp, uid } from "./store";
 import {
   CATEGORIES,
@@ -13,9 +11,9 @@ import {
   type Workout,
 } from "./types";
 
-// ---------- MuscleWiki ----------
-// MuscleWiki muscle names -> body-map muscles. Order matters (specific first).
-const MW_MAP: [RegExp, MuscleKey[]][] = [
+// ---------- Exercise muscle mapping ----------
+// English muscle names -> body-map muscles. Order matters (specific first).
+const EN_MAP: [RegExp, MuscleKey[]][] = [
   [/front.*(shoulder|delt)|anterior delt/i, ["front-deltoids"]],
   [/rear.*(shoulder|delt)|posterior delt/i, ["back-deltoids"]],
   [/lateral delt|side delt/i, ["front-deltoids", "back-deltoids"]],
@@ -41,12 +39,12 @@ export const mapMuscles = (list: string[]) => {
   const out = new Set<MuscleKey>();
   for (const m of list) {
     const t = m.trim();
-    // Canonical keys pass through (Gemini returns these); MW English names via regex.
+    // Canonical keys pass through (AI returns these); English names via regex.
     if (t in MUSCLES) {
       out.add(t as MuscleKey);
       continue;
     }
-    const hit = MW_MAP.find(([r]) => r.test(t));
+    const hit = EN_MAP.find(([r]) => r.test(t));
     hit?.[1].forEach((k) => out.add(k));
   }
   return Array.from(out);
@@ -54,54 +52,9 @@ export const mapMuscles = (list: string[]) => {
 export const mapCategory = (c: string): Category =>
   /stretch|yoga/i.test(c) ? "stretch" : /cardio/i.test(c) ? "cardio" : "strength";
 
-export async function importFromMuscleWiki(id: number): Promise<Exercise> {
-  const key = useApp.getState().mwKey;
-  const cache = useMwCache.getState();
-  let x = cache.exercises[id];
-  if (!x) {
-    x = await mwGet({ data: { apiKey: key, id } });
-    cache.putExercise(id, x);
-  }
-  const cat = mapCategory(x.category);
-  return {
-    id: `mw-${x.id}`,
-    name: x.name,
-    muscles: mapMuscles(x.muscles).length ? mapMuscles(x.muscles) : ["abs"],
-    category: cat,
-    mode: cat === "strength" ? "reps" : "time",
-    reps: 12,
-    seconds: 40,
-    equipment: x.category,
-    description: x.difficulty ? `Сложность: ${x.difficulty}` : "",
-    steps: x.steps,
-    mistakes: [],
-    videoUrl: x.videoUrl ?? undefined,
-    source: "musclewiki",
-  };
-}
-
-export async function searchMuscleWiki(q: string) {
-  const k = q.trim().toLowerCase();
-  const cache = useMwCache.getState();
-  if (cache.searches[k]) return cache.searches[k]!;
-  const res = await mwSearch({ data: { apiKey: useApp.getState().mwKey, q: k } });
-  cache.putSearch(k, res);
-  return res;
-}
-
+/** Direct/link video URLs are used as-is. */
 export async function signedVideo(url?: string) {
-  if (!url) return undefined;
-  if (!url.includes("api.musclewiki.com/stream")) return url;
-  const key = useApp.getState().mwKey;
-  if (!key) return undefined;
-  const cache = useMwCache.getState();
-  let tok = cache.token;
-  if (!tok || tok.until < Date.now()) {
-    const t = await mwMediaToken({ data: { apiKey: key } });
-    tok = { token: t.token, until: Date.now() + (t.expiresIn - 30) * 1000 };
-    cache.putToken(tok);
-  }
-  return `${url}${url.includes("?") ? "&" : "?"}token=${tok.token}`;
+  return url;
 }
 
 // ---------- Health checks (cheap, no quota spent on generation) ----------
@@ -115,14 +68,6 @@ export async function checkAiKeys(): Promise<string> {
     useApp.getState().set({ ai: { ...ai, keys: promoteKey(ai.keys, r.keyIndex) } });
   }
   return `Ключ ${r.keyIndex + 1} работает · ${r.ms} мс`;
-}
-
-/** Verifies the MuscleWiki key via a cheap token request. */
-export async function checkMwKey(): Promise<string> {
-  const key = useApp.getState().mwKey;
-  if (!key) throw new Error("Сначала введи ключ MuscleWiki");
-  await mwMediaToken({ data: { apiKey: key } });
-  return "Ключ работает ✓";
 }
 
 /** Verifies the ffmpeg-api.com key via a cheap directory listing (no quota spent). */

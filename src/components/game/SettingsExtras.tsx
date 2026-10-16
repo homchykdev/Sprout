@@ -16,7 +16,6 @@ import {
   type Strategy,
 } from "@/lib/backup";
 import { listMedia } from "@/lib/media";
-import { useMwCache } from "@/lib/mw-cache";
 import { useApp, type AppState } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { beep, fanfare, listVoices, primeAudio, speak } from "@/lib/voice";
@@ -310,30 +309,6 @@ export function VoiceSection() {
         <Play className="h-4 w-4" /> Проверить звук
       </TapButton>
     </>
-  );
-}
-
-export function MwCacheInfo() {
-  const c = useMwCache();
-  const month = new Date().toISOString().slice(0, 7);
-  return (
-    <div className="flex items-center justify-between rounded-2xl bg-muted px-4 py-3 text-sm">
-      <span>
-        Запросов в этом месяце: <b className="tabular">{c.month === month ? c.requests : 0}</b>
-        <span className="block text-xs text-muted-foreground">
-          В кеше: {Object.keys(c.exercises).length} упр., {Object.keys(c.searches).length} поисков
-        </span>
-      </span>
-      <button
-        className="font-semibold text-destructive"
-        onClick={() => {
-          c.clear();
-          toast.success("Кеш очищен");
-        }}
-      >
-        Очистить
-      </button>
-    </div>
   );
 }
 

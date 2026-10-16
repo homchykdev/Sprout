@@ -27,6 +27,6 @@ export function ExerciseThumb({ ex, className }: { ex: Exercise; className?: str
   const k = ex.videoUrl && !bad ? parseLink(ex.videoUrl) : null;
   if (k?.type === "youtube") return <span className={box}><img src={ytThumb(k.id)} alt="" loading="lazy" className={cover} onError={() => setBad(true)} /></span>;
   if (k?.type === "image") return <span className={box}><img src={k.url} alt="" loading="lazy" referrerPolicy="no-referrer" className={cover} onError={() => setBad(true)} /></span>;
-  if (k?.type === "video" && !k.url.includes("api.musclewiki.com")) return <span className={box}><video src={k.url + "#t=0.5"} muted playsInline preload="metadata" className={cover} onError={() => setBad(true)} /></span>;
+  if (k?.type === "video") return <span className={box}><video src={k.url + "#t=0.5"} muted playsInline preload="metadata" className={cover} onError={() => setBad(true)} /></span>;
   return <span className={box}>{ex.emoji || "🏋️"}</span>;
 }

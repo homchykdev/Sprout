@@ -1,19 +1,13 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowLeft, Bell, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
-import {
-  ApiCheck,
-  DataSection,
-  MwCacheInfo,
-  SaveCheck,
-  VoiceSection,
-} from "@/components/game/SettingsExtras";
+import { ApiCheck, DataSection, SaveCheck, VoiceSection } from "@/components/game/SettingsExtras";
 import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
 import { TapButton } from "@/components/game/TapButton";
 import { notify } from "@/components/game/useReminders";
 import { maskKey } from "@/lib/ai-keys";
-import { checkAiKeys, checkFfmpegKey, checkMwKey } from "@/lib/clients";
+import { checkAiKeys, checkFfmpegKey } from "@/lib/clients";
 import { useApp } from "@/lib/store";
 import {
   buildFfmpegOptions,
@@ -31,7 +25,7 @@ export const Route = createFileRoute("/settings")({
       { title: "Настройки · Пульс" },
       {
         name: "description",
-        content: "Напоминания, ключи MuscleWiki и ИИ, экспорт и импорт данных.",
+        content: "Напоминания, ключи ИИ, экспорт и импорт данных.",
       },
       { property: "og:title", content: "Настройки · Пульс" },
       { property: "og:description", content: "Напоминания, ключи и резервные копии." },
@@ -175,22 +169,6 @@ function Settings() {
 
       <Section title="Звук и голос">
         <VoiceSection />
-      </Section>
-
-      <Section title="MuscleWiki">
-        <input
-          className={field}
-          type="password"
-          placeholder="mw_…"
-          value={s.mwKey}
-          onChange={(e) => s.set({ mwKey: e.target.value.trim() })}
-        />
-        <p className="text-sm text-muted-foreground">
-          Ключ хранится только на этом устройстве. Используется для импорта упражнений с видео.
-          Ответы сохраняются на устройстве, чтобы не тратить лимит.
-        </p>
-        <ApiCheck label="Проверить ключ" check={checkMwKey} />
-        <MwCacheInfo />
       </Section>
 
       <Section title="ИИ-помощник">

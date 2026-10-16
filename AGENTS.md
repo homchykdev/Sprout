@@ -51,11 +51,10 @@ If BRIEF.md is empty or a field that changes UX/data is missing, ask me (one bat
 
 ## Architecture
 - All user data lives on-device in a zustand persist store (`src/lib/store.ts`), with JSON export/import in Settings — user wanted no server and portable backups.
-- MuscleWiki and AI (Gemini / OpenAI-compatible) use the user's own keys from Settings, proxied via server functions in `src/lib/*.functions.ts` — avoids CORS, keys never stored server-side.
+- AI (Gemini / OpenAI-compatible) uses the user's own keys from Settings, proxied via server functions in `src/lib/*.functions.ts` — avoids CORS, keys never stored server-side.
 - Gamification/schedule logic is pure functions in `src/lib/game.ts` — missed planned days roll forward within the same week; vacations freeze streak.
 - Backups export one JSON file per section (`src/lib/backup.ts` v2, v1 import; multi-file import merges); keys opt-in — user wants each data type in its own file.
 - Muscle keys = `react-body-highlighter` muscles; legacy keys go through `normalizeMuscles` + store `migrate` — the library renders the load map.
-- MuscleWiki responses + media token cached in `src/lib/mw-cache.ts` (separate persist store) — saves API quota.
 - Voice uses browser `speechSynthesis` + Web Audio beeps (`src/lib/voice.ts`) — free and offline, user's choice.
 - User photos/videos stored in IndexedDB via `src/lib/media.ts` (not the zustand store) with their own per-album archive export — too large for localStorage/JSON backups.
 - Link media (YouTube/Vimeo/file/iframe) rendered by `LinkMedia` with `parseLink`/`parseClips` in `src/lib/embed.ts`; YouTube clips loop via IFrame API polling — one player for exercises and albums.

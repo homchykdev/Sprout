@@ -20,7 +20,6 @@ export interface AppState {
   schedule: { days: number[]; rotation: string[]; rotationIndex: number };
   vacations: Vacation[];
   ai: AiSettings;
-  mwKey: string;
   /** ffmpeg-api.com key for cloud video conversion (own key, on-device). */
   ffmpegKey: string;
   /** User-tunable ffmpeg output options (argv array) for cloud video conversion. */
@@ -79,7 +78,6 @@ export const initialState: AppState = {
     baseUrl: "https://api.openai.com/v1",
     model: "gemini-2.5-flash",
   },
-  mwKey: "",
   ffmpegKey: "",
   ffmpegOptions: [...DEFAULT_FFMPEG_OPTIONS],
   ffmpegOut: "webm",
@@ -145,7 +143,7 @@ export const useApp = create<AppState & Actions>()(
     }),
     {
       name: "pulse-fit-v1",
-      version: 6,
+      version: 7,
       migrate: (persisted, from) =>
         migrateState(persisted as Partial<AppState>, from) as AppState & Actions,
     },
@@ -155,9 +153,14 @@ export const useApp = create<AppState & Actions>()(
 export const uid = () =>
   Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
 
-/** v1 -> v2: legacy muscle keys become body-map muscles; fill new fields. v2 -> v3: badges/medals seen + sound theme. v3 -> v4: single ai.apiKey becomes ai.keys array. v4 -> v5: ffmpegKey for cloud video conversion. v5 -> v6: tunable ffmpegOptions/ffmpegOut. */
+/** v1 -> v2: legacy muscle keys become body-map muscles; fill new fields. v2 -> v3: badges/medals seen + sound theme. v3 -> v4: single ai.apiKey becomes ai.keys array. v4 -> v5: ffmpegKey for cloud video conversion. v5 -> v6: tunable ffmpegOptions/ffmpegOut. v6 -> v7: MuscleWiki removed (mwKey dropped, "musclewiki" sources become custom). */
 export function migrateState(p: Partial<AppState>, from: number): Partial<AppState> {
   const out: Partial<AppState> = { ...p };
+  delete (out as Record<string, unknown>)["mwKey"];
+  if (out.exercises)
+    out.exercises = out.exercises.map((e) =>
+      (e as { source?: string }).source === "musclewiki" ? { ...e, source: "custom" } : e,
+    );
   if (from < 5 && typeof p.ffmpegKey !== "string") out.ffmpegKey = "";
   if (from < 6) {
     if (!Array.isArray(p.ffmpegOptions)) out.ffmpegOptions = [...DEFAULT_FFMPEG_OPTIONS];
