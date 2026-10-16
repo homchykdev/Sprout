@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { ChevronLeft, ChevronRight, ImageOff, X } from "lucide-react";
 import { useBlobUrl, type MediaItem } from "@/lib/media";
 import { cn } from "@/lib/utils";
@@ -25,8 +26,10 @@ const fmtDay = (d: string) =>
  */
 export function PhotoLightbox({ items, index, onIndex, onClose }: Props) {
   const [drag, setDrag] = useState<number | null>(null);
+  const [mounted, setMounted] = useState(false);
   const start = useRef<number | null>(null);
   const view = useRef<HTMLDivElement>(null);
+  useEffect(() => setMounted(true), []);
   const calm =
     typeof window !== "undefined" &&
     window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
@@ -69,7 +72,10 @@ export function PhotoLightbox({ items, index, onIndex, onClose }: Props) {
     setDrag(null);
   };
 
-  return (
+  // Portal out of <main class="animate-rise">: its permanent
+  // translateY(0) transform would otherwise trap `fixed` inside the tab.
+  if (!mounted) return null;
+  return createPortal(
     <div
       className="fixed inset-0 z-[150] flex flex-col bg-black/95 text-white"
       role="dialog"
@@ -140,7 +146,8 @@ export function PhotoLightbox({ items, index, onIndex, onClose }: Props) {
           {cur.note ? ` · ${cur.note}` : ""}
         </p>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

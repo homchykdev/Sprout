@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 
 const COLORS = ["var(--primary)", "var(--flame)", "var(--gold)", "var(--sky)"];
 
@@ -16,6 +17,7 @@ const reducedMotion = () =>
  */
 export function ConfettiOverlay({ count = 48 }: { count?: number }) {
   const [done, setDone] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const pieces = useMemo(
     () =>
       Array.from({ length: count }, (_, i) => ({
@@ -28,11 +30,14 @@ export function ConfettiOverlay({ count = 48 }: { count?: number }) {
     [count],
   );
   useEffect(() => {
+    setMounted(true);
     const t = setTimeout(() => setDone(true), LIFE_MS);
     return () => clearTimeout(t);
   }, []);
-  if (done || reducedMotion()) return null;
-  return (
+  if (done || !mounted || reducedMotion()) return null;
+  // Portal out of <main class="animate-rise">: its permanent
+  // translateY(0) transform would otherwise trap `fixed` inside the tab.
+  return createPortal(
     <div className="pointer-events-none fixed inset-0 z-[200] overflow-hidden" aria-hidden>
       {pieces.map((p, i) => (
         <span
@@ -48,7 +53,8 @@ export function ConfettiOverlay({ count = 48 }: { count?: number }) {
           }}
         />
       ))}
-    </div>
+    </div>,
+    document.body,
   );
 }
 
