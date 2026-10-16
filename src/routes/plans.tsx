@@ -10,6 +10,7 @@ import { useApp, uid } from "@/lib/store";
 import type { Workout } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { estimateMinutes } from "@/lib/workout-utils";
+import { LibraryContent } from "./library";
 
 export const Route = createFileRoute("/plans")({
   head: () => ({
@@ -27,6 +28,41 @@ export const Route = createFileRoute("/plans")({
 });
 
 function Plans() {
+  const [tab, setTab] = useState<"workouts" | "exercises">("workouts");
+  return (
+    <div className="space-y-5">
+      <h1 className="pt-2 text-3xl font-extrabold tracking-tight">Тренировки</h1>
+      <div
+        className="flex rounded-full bg-muted p-1 text-sm font-semibold"
+        role="tablist"
+        aria-label="Разделы тренировок"
+      >
+        {(
+          [
+            ["workouts", "Мои тренировки"],
+            ["exercises", "Упражнения"],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            role="tab"
+            aria-selected={tab === id}
+            onClick={() => setTab(id)}
+            className={cn(
+              "min-h-[44px] flex-1 rounded-full transition-colors",
+              tab === id ? "bg-card shadow-sm" : "text-muted-foreground",
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {tab === "workouts" ? <PlansContent /> : <LibraryContent />}
+    </div>
+  );
+}
+
+export function PlansContent() {
   const s = useApp();
   const nav = useNavigate();
   const [edit, setEdit] = useState<Workout | null>(null);
@@ -53,8 +89,6 @@ function Plans() {
 
   return (
     <div className="space-y-5">
-      <h1 className="pt-2 text-3xl font-extrabold tracking-tight">Тренировки</h1>
-
       <section className="card-soft p-5">
         <h2 className="font-bold">Дни тренировок</h2>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -86,7 +120,9 @@ function Plans() {
             size="sm"
             variant="flame"
             onClick={() =>
-              s.ai.keys.length ? setAiOpen(true) : toast("Добавьте ИИ-ключ в настройках")
+              s.ai.keys.length
+                ? setAiOpen(true)
+                : toast("Добавьте ИИ-ключ в Профиле")
             }
           >
             <Sparkles className="h-4 w-4" /> ИИ

@@ -97,7 +97,7 @@ function Today() {
             <p className="font-bold">Режим отпуска</p>
             <p className="text-sm text-muted-foreground">Напоминания выключены, серия не сгорит.</p>
           </div>
-          <Link to="/settings" className="text-sm font-semibold text-sky-shade">
+          <Link to="/profile" className="text-sm font-semibold text-sky-shade">
             Изменить
           </Link>
         </div>

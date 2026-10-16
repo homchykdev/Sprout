@@ -31,6 +31,15 @@ export const Route = createFileRoute("/library")({
 });
 
 function Library() {
+  return (
+    <div className="space-y-4">
+      <h1 className="pt-2 text-3xl font-extrabold tracking-tight">Упражнения</h1>
+      <LibraryContent />
+    </div>
+  );
+}
+
+export function LibraryContent() {
   const { exercises, deleteExercise, ai } = useApp();
   const [q, setQ] = useState("");
   const [cat, setCat] = useState<Category | "all">("all");
@@ -48,7 +57,6 @@ function Library() {
 
   return (
     <div className="space-y-4">
-      <h1 className="pt-2 text-3xl font-extrabold tracking-tight">Упражнения</h1>
       <div className="flex gap-2">
         <TapButton size="sm" onClick={() => setEdit(blankExercise())}>
           <Plus className="h-4 w-4" /> Своё
@@ -57,7 +65,9 @@ function Library() {
           size="sm"
           variant="flame"
           onClick={() =>
-            ai.keys.length ? setAiOpen(true) : toast("Добавьте ИИ-ключ в настройках")
+            ai.keys.length
+              ? setAiOpen(true)
+              : toast("Добавьте ИИ-ключ в Профиле")
           }
         >
           <Sparkles className="h-4 w-4" /> ИИ

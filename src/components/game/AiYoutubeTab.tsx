@@ -36,7 +36,7 @@ export function AiYoutubeTab({ onClose }: { onClose: () => void }) {
   if (!isGemini) {
     return (
       <p className="rounded-2xl bg-muted p-4 text-sm text-muted-foreground">
-        Разбор видео работает только с провайдером Gemini — переключите его в настройках. У
+        Разбор видео работает только с провайдером Gemini — переключите его в Профиле. У
         OpenAI-совместимых API нет анализа видео по ссылке.
       </p>
     );
@@ -132,7 +132,7 @@ export function AiYoutubeTab({ onClose }: { onClose: () => void }) {
             </div>
           )}
           {!hasKeys && (
-            <p className="text-sm text-muted-foreground">Сначала добавьте ИИ-ключ в настройках.</p>
+            <p className="text-sm text-muted-foreground">Сначала добавьте ИИ-ключ в Профиле.</p>
           )}
         </>
       )}

@@ -67,7 +67,21 @@ export const Route = createFileRoute("/gallery")({
 });
 
 function Gallery() {
-  const [album, setAlbum] = useState<Album>("progress");
+  return <AlbumView album="progress" showSwitcher title="Фото" titleAsH1 />;
+}
+
+export function AlbumView({
+  album: initial,
+  showSwitcher = false,
+  title = null,
+  titleAsH1 = false,
+}: {
+  album: Album;
+  showSwitcher?: boolean;
+  title?: string | null;
+  titleAsH1?: boolean;
+}) {
+  const [album, setAlbum] = useState<Album>(initial);
   const items = useMedia(album);
   const ffmpegKey = useApp((s) => s.ffmpegKey);
   const ffmpegOptions = useApp((s) => s.ffmpegOptions);
@@ -193,29 +207,37 @@ function Gallery() {
 
   return (
     <div className="space-y-4">
-      <h1 className="pt-2 text-3xl font-extrabold tracking-tight">Фото</h1>
-      <div className="flex rounded-full bg-muted p-1 text-sm font-semibold">
-        {(
-          [
-            ["progress", "Мой прогресс"],
-            ["goal", "Цели фигуры"],
-          ] as const
-        ).map(([id, l]) => (
-          <button
-            key={id}
-            onClick={() => {
-              setAlbum(id);
-              exitSelect();
-            }}
-            className={cn(
-              "min-h-[44px] flex-1 rounded-full transition-colors",
-              album === id ? "bg-card shadow-sm" : "text-muted-foreground",
-            )}
-          >
-            {l}
-          </button>
-        ))}
-      </div>
+      {title ? (
+        titleAsH1 ? (
+          <h1 className="pt-2 text-3xl font-extrabold tracking-tight">{title}</h1>
+        ) : (
+          <h2 className="text-xl font-extrabold tracking-tight">{title}</h2>
+        )
+      ) : null}
+      {showSwitcher ? (
+        <div className="flex rounded-full bg-muted p-1 text-sm font-semibold">
+          {(
+            [
+              ["progress", "Мой прогресс"],
+              ["goal", "Цели фигуры"],
+            ] as const
+          ).map(([id, l]) => (
+            <button
+              key={id}
+              onClick={() => {
+                setAlbum(id);
+                exitSelect();
+              }}
+              className={cn(
+                "min-h-[44px] flex-1 rounded-full transition-colors",
+                album === id ? "bg-card shadow-sm" : "text-muted-foreground",
+              )}
+            >
+              {l}
+            </button>
+          ))}
+        </div>
+      ) : null}
       <div className="flex gap-2">
         <TapButton className="flex-1" disabled={busy} onClick={() => file.current?.click()}>
           <ImagePlus className="h-4 w-4" /> {busy ? "Сохраняю…" : "Загрузить"}

@@ -101,8 +101,6 @@ function AiKeys() {
 }
 
 function Settings() {
-  const s = useApp();
-
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 pt-2">
@@ -111,6 +109,16 @@ function Settings() {
         </Link>
         <h1 className="text-3xl font-extrabold tracking-tight">Настройки</h1>
       </div>
+      <SettingsSections />
+    </div>
+  );
+}
+
+export function SettingsSections() {
+  const s = useApp();
+
+  return (
+    <>
 
       <Section title="Профиль">
         <input
@@ -244,7 +252,7 @@ function Settings() {
       </Section>
 
       <SaveCheck />
-    </div>
+    </>
   );
 }
 

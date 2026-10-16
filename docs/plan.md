@@ -1,41 +1,39 @@
-# Plan: настраиваемое перекодирование видео (ffmpeg-api.com)
+# Plan: 4 вкладки — пробный вариант (откат: git revert)
 
-> Статус: реализовано. Документация ffmpeg-api.com проверена: GPU/NVIDIA нигде не заявлены
-> (все примеры — CPU: libx264/crf/preset; биллинг в GB-sec; OpenAPI без упоминаний nvenc/cuda),
-> пользователь дополнительно проверил через playground — NVIDIA нет. Поэтому дефолт переключён
-> на CPU: `libsvtav1 -crf 38 -preset 6` (1080x1920/60fps, webm). `av1_nvenc` остался опциональным
-> пресетом: пробуется как есть, при ошибке облака один ретрай на CPU (см. `cpuFallbackOptions`).
-> Ответы пользователя: дефолт+ CPU-замена — да; режимы — оба; контейнер по умолчанию — webm.
+> Статус: к реализации. Откат — `git log --oneline` → `git revert <commit…>` или жёсткий возврат
+> к коммиту до изменений (пользователь так и просил: «не понравится — вернём с последнего коммита»).
+> Поэтому все старые роуты (`/library`, `/gallery`, `/settings`) НЕ удаляются — остаются рабочими
+> по прямым ссылкам, из нижнего бара просто убираются.
 
-## Что делаем
-Новая секция в Настройках «Видео: перекодирование»: пользователь задаёт параметры по умолчанию + advanced-режим с ручной командой для `ffmpeg-api.com`. Команда хранится на устройстве, уходит только в транзите через `ffmpeg.functions.ts` (как `ffmpegKey`).
+## Цель
+Бар: `Сегодня | Тренировки | Прогресс | Профиль` (4 вместо 5).
+- Тренировки = планы + библиотека упражнений (сегмент-переключатель внутри страницы).
+- Прогресс = обзор (карта, советы, история) + фото прогресса (альбом `progress`).
+- Профиль (новый `/profile`) = кто я: имя/уровень, бейджи, цели фигуры (альбом `goal`), настройки/ключи/бэкап.
+- Технический альбом `exercise` из навигации прячется (нужен только как превью).
 
-## Дефолт от пользователя (как есть, с рисками)
-```
--vf "scale=1080:1920,fps=60" -c:v av1_nvenc -rc vbr -cq 38 -b:v 0 -preset p7 -tune hq -spatial-aq 1 -pix_fmt yuv420p
-```
-Риски (не блокирую, но фиксирую):
-1. `av1_nvenc` требует NVIDIA GPU на стороне облака — если у `ffmpeg-api.com` CPU-сборка, конвертация упадёт. Сейчас в `media.ts` уже есть fallback «сохранить оригинал», тост надо будет уточнить.
-2. `scale=1080:1920` ломает aspect (растягивает). Правильно `scale=1080:-2` или `force_original_aspect_ratio`. Оставляю как просишь, но в UI добавлю подсказку.
-3. `fps=60` + 1080p увеличивает файл в разы против текущего `480px/10fps/webp` — это противоречит экономии IndexedDB. Принимаю как выбор пользователя.
-4. Выход перестанет быть `webp без звука` — надо делать динамические `outName/mime/kind`, иначе галерея (`<video>` vs `<img>`) покажет неверно.
-
-## Шаги
-1. `src/lib/store.ts`: `ffmpegOptions: string[]` (argv-массив) + `ffmpegOutExt: string` (напр. `mp4`), `initialState` = дефолт выше, `version 5→6`, `migrate` добивает поля. Вероятно объект `ffmpeg: { options, outExt }` — компактнее, решу при реализации.
-2. `src/lib/ffmpeg.functions.ts`: снять лимиты `options max 16×80` → напр. `32×200`, `outName` валидация под `mp4/webm/webp`. Безопасность: только argv-массив, без shell.
-3. `src/lib/ffmpeg.ts`: `convertVideoToWebp(file, key)` → `convertVideo(file, key, options, outName)` + парсер строки → argv (кавычки), маппинг `ext→mime/kind`. Старую сигнатуру оставить как враппер или удалить (проверю вызовы).
-4. `src/lib/media.ts` `addFiles`: прокинуть `opts { ffmpegKey, ffmpegOptions, outExt }`, по результату класть `kind: video/image` + верный `mime`. Тост «сжато в webp» в `gallery.tsx` → «перекодировано».
-5. `src/routes/settings.tsx`: секция «Видео: перекодирование» — поле ключа (как есть) + пресет/простой режим (vf, кодек — текст-инпуты) + `<details>Advanced</details>` с textarea под полную команду + кнопки «Сбросить к дефолту», «Проверить ключ». Валидация: пустая → fallback на дефолт, ошибка парсинга → toast + не сохраняем.
-6. `src/lib/backup.ts`: секция `keys` уже включает `ffmpegKey` — добавить новое поле туда же; `countRecords` без изменений (ключи считаются штуками).
-7. Тесты: `video-rules`/парсер команды (кавычки, пустые, инъекции с `;|&`), `migrateState v5→v6`, `backup` keys. Обновить существующие `backup.test.ts` ожидания.
+## Шаги (мелкие, каждый — отдельный коммит)
+1. `library.tsx`: выделить `export function LibraryContent()` (всё без `h1`), роут-обёртка остаётся.
+2. `plans.tsx`: выделить `export function PlansContent()`, роут `Plans` = `h1 + сегмент [Мои тренировки|Упражнения] + PlansContent/LibraryContent`.
+3. `progress.tsx`: выделить `export function ProgressOverview()`; `Badges` ПЕРЕЕЗЖАЮТ в Профиль (из Прогресса убираются), `MonthlyChallenge` остаётся в обоих местах (там компакт, тут полный — уже так).
+4. `gallery.tsx`: выделить `export function AlbumView({ album, showSwitcher })`; роут `Gallery` — legacy-обёртка со свитчером (без изменений поведения).
+5. `settings.tsx`: выделить `export function SettingsSections()` (все секции без шапки-назад); роут `Settings` — legacy-обёртка.
+6. Новый `src/routes/profile.tsx`: карточка пользователя (имя, уровень, streak, XP) + `Badges` + `AlbumView album="goal"` + `SettingsSections`. Файловый роутинг TanStack подхватит `/profile` сам; `routeTree.gen.ts` регенерируется при build.
+7. `AppShell.tsx`: TABS=4, `grid-cols-4`, подсветка legacy: `/library→/plans`, `/gallery→/progress`, `/settings→/profile`; шестерёнка настроек из шапки убирается (настройки теперь в Профиле).
+8. Проверки по DoD (см. ниже), скриншоты 390/1440, консоль без ошибок.
 
 ## Файлы
-- `docs/plan.md` (этот), `src/lib/store.ts`, `src/lib/ffmpeg.ts`, `src/lib/ffmpeg.functions.ts`, `src/lib/media.ts`, `src/routes/settings.tsx`, `src/routes/gallery.tsx` (тексты тостов), `src/lib/backup.ts`, тесты.
+- `docs/plan.md` (этот)
+- `src/routes/library.tsx`, `src/routes/plans.tsx`, `src/routes/progress.tsx`, `src/routes/gallery.tsx`, `src/routes/settings.tsx`
+- `src/routes/profile.tsx` (новый)
+- `src/components/game/AppShell.tsx`
 
-## Проверки (DoD)
-`pnpm typecheck && lint && test && build` + dev-сервер, прогон загрузки видео с дефолтом и с кастомом, скриншоты 390/1440, консоль без ошибок.
+## Риски
+1. `routeTree.gen.ts` — генерируемый; руками не трогаем, при конфликте — перегенерировать build'ом.
+2. `AlbumView` зависит от IndexedDB (`useMedia`) — при встраивании в 2 страницы одновременно монтируется только один инстанс, ок.
+3. Состояние сегментов — локальный `useState` (без query-параметров): диплинк `/plans?tab=…` не поддерживается в пробной версии. Если понравится — добавим `validateSearch`.
+4. В `package.json` НЕТ скриптов `typecheck`/`test` (есть только `lint`, `build:dev`, `build`) — проверки адаптирую: `npx tsc --noEmit`, `npm run lint`, `npx vitest run`, `npm run build`.
+5. Бейджи уезжают из Прогресса — осознанное изменение, фиксирую здесь.
 
-## Вопросы (ответь до старта)
-1. Дефолт оставляем буквально `scale=1080:1920 + av1_nvenc` (риск ошибки облака) или сразу чиню на `scale=1080:-2` + `libsvtav1/libx264` fallback? План — буквально как просишь.
-2. Простой режим нужен отдельными полями (разрешение/fps/кодек) или достаточно одного Advanced-текста? План — оба: 2-3 простых поля + Advanced textarea.
-3. Выходной контейнер по умолчанию какой — `mp4` (играет везде) или `webm`? План — `mp4`.
+## Вопросы — закрыты пользователем
+4 таба как предложено; пробуем, не понравится — откат с коммита.

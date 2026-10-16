@@ -2,14 +2,14 @@ import { createFileRoute } from "@tanstack/react-router";
 import { AlertCircle, CheckCircle2, Info } from "lucide-react";
 import { useState } from "react";
 import { BodyMap } from "@/components/game/BodyMap";
-import { Badges } from "@/components/game/Badges";
 import { Celebrate } from "@/components/game/Celebrate";
 import { useCelebrate } from "@/components/game/useCelebrate";
 import { MonthlyChallenge } from "@/components/game/MonthlyChallenge";
-import { evaluateBadges, monthlyChallenge } from "@/lib/achievements";
+import { monthlyChallenge } from "@/lib/achievements";
 import { advice, muscleLoad, streak } from "@/lib/game";
 import { useApp } from "@/lib/store";
 import { cn } from "@/lib/utils";
+import { AlbumView } from "./gallery";
 
 export const Route = createFileRoute("/progress")({
   head: () => ({
@@ -32,20 +32,53 @@ export const Route = createFileRoute("/progress")({
 const MOODS = ["😞", "😐", "🙂", "😄", "🤩"] as const;
 
 function Progress() {
+  const [tab, setTab] = useState<"overview" | "photos">("overview");
+  return (
+    <div className="space-y-5">
+      <h1 className="pt-2 text-3xl font-extrabold tracking-tight">Прогресс</h1>
+      <div
+        className="flex rounded-full bg-muted p-1 text-sm font-semibold"
+        role="tablist"
+        aria-label="Разделы прогресса"
+      >
+        {(
+          [
+            ["overview", "Обзор"],
+            ["photos", "Фото"],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            role="tab"
+            aria-selected={tab === id}
+            onClick={() => setTab(id)}
+            className={cn(
+              "min-h-[44px] flex-1 rounded-full transition-colors",
+              tab === id ? "bg-card shadow-sm" : "text-muted-foreground",
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {tab === "overview" ? <ProgressOverview /> : <AlbumView album="progress" />}
+    </div>
+  );
+}
+
+export function ProgressOverview() {
   const s = useApp();
   const [days, setDays] = useState(7);
   const { load, cats } = muscleLoad(s.sessions, days);
   const tips = advice(s.sessions);
   const total = cats.strength + cats.cardio + cats.stretch || 1;
   const totalMin = Math.round(s.sessions.reduce((a, x) => a + x.durationSec, 0) / 60);
-  const badges = evaluateBadges(s, new Date());
   const challenge = monthlyChallenge(s.sessions, new Date());
   const party = useCelebrate();
 
   return (
     <div className="space-y-5">
       <Celebrate show={party} />
-      <h1 className="pt-2 text-3xl font-extrabold tracking-tight">Прогресс</h1>
       <div className="grid grid-cols-3 gap-3">
         {[
           { v: s.sessions.length, l: "тренировок" },
@@ -120,8 +153,6 @@ function Progress() {
       </section>
 
       <MonthlyChallenge challenge={challenge} />
-
-      <Badges states={badges} />
 
       <section>
         <h2 className="mb-3 text-lg font-bold">История</h2>

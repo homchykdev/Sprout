@@ -1,5 +1,5 @@
 import { Link, useLocation } from "@tanstack/react-router";
-import { Camera, Dumbbell, Home, LayoutList, Settings, TrendingUp } from "lucide-react";
+import { Home, LayoutList, TrendingUp, User } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { level, streak } from "@/lib/game";
 import { useApp } from "@/lib/store";
@@ -9,11 +9,10 @@ import { VacationButton } from "./VacationButton";
 import { useReminders } from "./useReminders";
 
 const TABS = [
-  { to: "/", label: "Сегодня", icon: Home },
-  { to: "/plans", label: "Тренировки", icon: LayoutList },
-  { to: "/library", label: "Упражнения", icon: Dumbbell },
-  { to: "/progress", label: "Прогресс", icon: TrendingUp },
-  { to: "/gallery", label: "Фото", icon: Camera },
+  { to: "/", label: "Сегодня", icon: Home, match: ["/"] },
+  { to: "/plans", label: "Тренировки", icon: LayoutList, match: ["/plans", "/library"] },
+  { to: "/progress", label: "Прогресс", icon: TrendingUp, match: ["/progress", "/gallery"] },
+  { to: "/profile", label: "Профиль", icon: User, match: ["/profile", "/settings"] },
 ] as const;
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -52,17 +51,16 @@ function Chrome({ children, pathname }: { children: ReactNode; pathname: string 
           <span className="rounded-full bg-sky-soft px-3 py-1.5 text-sm font-bold text-sky-shade">Ур. {lv.lvl}</span>
         </div>
         <div className="flex items-center gap-1">
-        <VacationButton />
-        <Link to="/settings" aria-label="Настройки" className="press flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground hover:bg-muted">
-          <Settings className="h-5 w-5" />
-        </Link>
+          <VacationButton />
         </div>
       </header>
       <main key={pathname} className="animate-rise px-5 pb-32 pt-2">{children}</main>
       <nav className="glass fixed inset-x-0 bottom-0 z-30 border-t pb-[env(safe-area-inset-bottom)]">
-        <div className="mx-auto grid max-w-xl grid-cols-5">
-          {TABS.map(({ to, label, icon: Icon }) => {
-            const active = to === "/" ? pathname === "/" : pathname.startsWith(to);
+        <div className="mx-auto grid max-w-xl grid-cols-4">
+          {TABS.map(({ to, label, icon: Icon, match }) => {
+            const active = match.some((m) =>
+              m === "/" ? pathname === "/" : pathname.startsWith(m),
+            );
             return (
               <Link key={to} to={to} className="press flex flex-col items-center gap-1 py-2.5">
                 <span className={cn("flex h-9 w-12 items-center justify-center rounded-2xl transition-colors duration-300", active ? "bg-primary-soft text-primary-shade" : "text-muted-foreground")}>
