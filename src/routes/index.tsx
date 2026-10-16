@@ -2,7 +2,23 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { Check, ChevronRight, Palmtree, Play } from "lucide-react";
 import { Mascot, type Mood } from "@/components/game/Mascot";
 import { TapButton } from "@/components/game/TapButton";
-import { activeVacation, addDays, dayKey, level, nextWorkout, startOfWeek, streak, weekday, WEEKDAYS, weekStatus } from "@/lib/game";
+import { Celebrate } from "@/components/game/Celebrate";
+import { useCelebrate } from "@/components/game/useCelebrate";
+import { DailyQuests } from "@/components/game/DailyQuests";
+import { MonthlyChallenge } from "@/components/game/MonthlyChallenge";
+import { dailyQuests, monthlyChallenge } from "@/lib/achievements";
+import {
+  activeVacation,
+  addDays,
+  dayKey,
+  level,
+  nextWorkout,
+  startOfWeek,
+  streak,
+  weekday,
+  WEEKDAYS,
+  weekStatus,
+} from "@/lib/game";
 import { useApp } from "@/lib/store";
 import { estimateMinutes } from "@/lib/workout-utils";
 import { cn } from "@/lib/utils";
@@ -13,7 +29,10 @@ export const Route = createFileRoute("/")({
       { title: "Сегодня · Пульс" },
       { name: "description", content: "Твоя тренировка на сегодня, серия и прогресс недели." },
       { property: "og:title", content: "Сегодня · Пульс" },
-      { property: "og:description", content: "Твоя тренировка на сегодня, серия и прогресс недели." },
+      {
+        property: "og:description",
+        content: "Твоя тренировка на сегодня, серия и прогресс недели.",
+      },
     ],
   }),
   component: Today,
@@ -31,19 +50,35 @@ function Today() {
 
   let mood: Mood = "happy";
   let line = "Готов стать сильнее?";
-  if (vac) { mood = "sleep"; line = `Отпуск до ${new Date(vac.end).toLocaleDateString("ru", { day: "numeric", month: "long" })}. Отдыхай — серия заморожена.`; }
-  else if (st.doneToday) { mood = "cheer"; line = "Сегодня ты уже победил. Горжусь!"; }
-  else if (st.atRisk) { mood = "sad"; line = `Серия под угрозой! Осталось ${st.left} трен. и ${st.remainingDays} дн. на неделе.`; }
-  else if (st.dueToday && st.carried) { mood = "sad"; line = "Ты пропустил тренировку. Я перенёс её на сегодня — не подведи 🥺"; }
-  else if (st.dueToday) { mood = "fire"; line = `Сегодня день тренировки! Осталось ~${hoursLeft} ч.`; }
-  else if (st.left === 0) { mood = "cheer"; line = "План недели выполнен! Можно отдохнуть или сделать бонус."; }
-  else line = "Сегодня день отдыха. Но бонусная тренировка даст +50% XP!";
+  if (vac) {
+    mood = "sleep";
+    line = `Отпуск до ${new Date(vac.end).toLocaleDateString("ru", { day: "numeric", month: "long" })}. Отдыхай — серия заморожена.`;
+  } else if (st.doneToday) {
+    mood = "cheer";
+    line = "Сегодня ты уже победил. Горжусь!";
+  } else if (st.atRisk) {
+    mood = "sad";
+    line = `Серия под угрозой! Осталось ${st.left} трен. и ${st.remainingDays} дн. на неделе.`;
+  } else if (st.dueToday && st.carried) {
+    mood = "sad";
+    line = "Ты пропустил тренировку. Я перенёс её на сегодня — не подведи 🥺";
+  } else if (st.dueToday) {
+    mood = "fire";
+    line = `Сегодня день тренировки! Осталось ~${hoursLeft} ч.`;
+  } else if (st.left === 0) {
+    mood = "cheer";
+    line = "План недели выполнен! Можно отдохнуть или сделать бонус.";
+  } else line = "Сегодня день отдыха. Но бонусная тренировка даст +50% XP!";
 
   const ws = startOfWeek(now);
   const doneDays = new Set(st.weekSessions.map((x) => dayKey(new Date(x.date))));
+  const quests = dailyQuests(s.sessions, now);
+  const challenge = monthlyChallenge(s.sessions, now);
+  const party = useCelebrate();
 
   return (
     <div className="space-y-5">
+      <Celebrate show={party} />
       <section className="flex items-end gap-3 pt-2">
         <Mascot mood={mood} size={96} power={Math.min(1, streak(s) / 30)} />
         <div className="animate-pop relative mb-6 flex-1 rounded-3xl border-2 bg-card px-4 py-3 text-[15px] font-medium leading-snug">
@@ -55,26 +90,43 @@ function Today() {
 
       {vac ? (
         <div className="card-soft flex items-center gap-4 p-5">
-          <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-sky-soft text-sky-shade"><Palmtree /></span>
+          <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-sky-soft text-sky-shade">
+            <Palmtree />
+          </span>
           <div className="flex-1">
             <p className="font-bold">Режим отпуска</p>
             <p className="text-sm text-muted-foreground">Напоминания выключены, серия не сгорит.</p>
           </div>
-          <Link to="/settings" className="text-sm font-semibold text-sky-shade">Изменить</Link>
+          <Link to="/settings" className="text-sm font-semibold text-sky-shade">
+            Изменить
+          </Link>
         </div>
       ) : null}
 
       {w ? (
-        <section className={cn("card-soft overflow-hidden", st.atRisk && !st.doneToday && "ring-2 ring-flame")}>
+        <section
+          className={cn(
+            "card-soft overflow-hidden",
+            st.atRisk && !st.doneToday && "ring-2 ring-flame",
+          )}
+        >
           <div className="p-5">
             <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-              {st.doneToday ? "Следующая тренировка" : st.dueToday ? "Тренировка на сегодня" : "Бонусная тренировка"}
+              {st.doneToday
+                ? "Следующая тренировка"
+                : st.dueToday
+                  ? "Тренировка на сегодня"
+                  : "Бонусная тренировка"}
             </p>
             <div className="mt-2 flex items-center gap-4">
-              <span className="flex h-16 w-16 items-center justify-center rounded-3xl bg-primary-soft text-3xl">{w.emoji}</span>
+              <span className="flex h-16 w-16 items-center justify-center rounded-3xl bg-primary-soft text-3xl">
+                {w.emoji}
+              </span>
               <div className="flex-1">
                 <h1 className="text-2xl font-extrabold tracking-tight">{w.name}</h1>
-                <p className="text-sm text-muted-foreground">{w.items.length} упражнений · ~{estimateMinutes(w, s.exercises)} мин</p>
+                <p className="text-sm text-muted-foreground">
+                  {w.items.length} упражнений · ~{estimateMinutes(w, s.exercises)} мин
+                </p>
               </div>
             </div>
             <TapButton
@@ -90,14 +142,18 @@ function Today() {
       ) : (
         <div className="card-soft p-5 text-center">
           <p className="font-semibold">Нет тренировок</p>
-          <Link to="/plans" className="text-sm font-semibold text-primary-shade">Создать тренировку</Link>
+          <Link to="/plans" className="text-sm font-semibold text-primary-shade">
+            Создать тренировку
+          </Link>
         </div>
       )}
 
       <section className="card-soft p-5">
         <div className="flex items-baseline justify-between">
           <h2 className="font-bold">Эта неделя</h2>
-          <span className="text-sm font-semibold text-muted-foreground tabular">{st.done} / {Math.max(st.target, st.done)}</span>
+          <span className="text-sm font-semibold text-muted-foreground tabular">
+            {st.done} / {Math.max(st.target, st.done)}
+          </span>
         </div>
         <div className="mt-4 grid grid-cols-7 gap-1.5">
           {WEEKDAYS.map((d, i) => {
@@ -107,11 +163,22 @@ function Today() {
             const today = i === weekday(now);
             return (
               <div key={d} className="flex flex-col items-center gap-1.5">
-                <span className={cn("text-[11px] font-semibold", today ? "text-foreground" : "text-muted-foreground")}>{d}</span>
+                <span
+                  className={cn(
+                    "text-[11px] font-semibold",
+                    today ? "text-foreground" : "text-muted-foreground",
+                  )}
+                >
+                  {d}
+                </span>
                 <span
                   className={cn(
                     "flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold transition-all",
-                    done ? "bg-flame text-primary-foreground" : planned ? "border-2 border-dashed border-flame/60 text-flame-shade" : "bg-muted text-muted-foreground",
+                    done
+                      ? "bg-flame text-primary-foreground"
+                      : planned
+                        ? "border-2 border-dashed border-flame/60 text-flame-shade"
+                        : "bg-muted text-muted-foreground",
                     today && !done && "ring-2 ring-foreground ring-offset-2 ring-offset-card",
                   )}
                 >
@@ -121,21 +188,33 @@ function Today() {
             );
           })}
         </div>
-        <p className="mt-4 text-xs text-muted-foreground">Пропустил день — тренировка сама перенесётся на следующий день этой недели.</p>
+        <p className="mt-4 text-xs text-muted-foreground">
+          Пропустил день — тренировка сама перенесётся на следующий день этой недели.
+        </p>
       </section>
 
       <section className="card-soft p-5">
         <div className="flex items-center justify-between">
           <h2 className="font-bold">Уровень {lv.lvl}</h2>
-          <span className="text-sm font-semibold text-muted-foreground tabular">{lv.into} / {lv.need} XP</span>
+          <span className="text-sm font-semibold text-muted-foreground tabular">
+            {lv.into} / {lv.need} XP
+          </span>
         </div>
         <div className="mt-3 h-4 overflow-hidden rounded-full bg-muted">
-          <div className="h-full rounded-full bg-gold transition-[width] duration-1000" style={{ width: `${Math.max(4, lv.pct * 100)}%` }} />
+          <div
+            className="h-full rounded-full bg-gold transition-[width] duration-1000"
+            style={{ width: `${Math.max(4, lv.pct * 100)}%` }}
+          />
         </div>
       </section>
 
+      <DailyQuests quests={quests} />
+      <MonthlyChallenge challenge={challenge} compact />
+
       <Link to="/progress" className="card-soft press flex items-center gap-4 p-5">
-        <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary-soft text-2xl">🗺️</span>
+        <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary-soft text-2xl">
+          🗺️
+        </span>
         <div className="flex-1">
           <p className="font-bold">Карта нагрузки</p>
           <p className="text-sm text-muted-foreground">Что догрузить и где нужен отдых</p>

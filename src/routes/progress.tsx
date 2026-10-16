@@ -2,6 +2,11 @@ import { createFileRoute } from "@tanstack/react-router";
 import { AlertCircle, CheckCircle2, Info } from "lucide-react";
 import { useState } from "react";
 import { BodyMap } from "@/components/game/BodyMap";
+import { Badges } from "@/components/game/Badges";
+import { Celebrate } from "@/components/game/Celebrate";
+import { useCelebrate } from "@/components/game/useCelebrate";
+import { MonthlyChallenge } from "@/components/game/MonthlyChallenge";
+import { evaluateBadges, monthlyChallenge } from "@/lib/achievements";
 import { advice, muscleLoad, streak } from "@/lib/game";
 import { useApp } from "@/lib/store";
 import { cn } from "@/lib/utils";
@@ -10,22 +15,21 @@ export const Route = createFileRoute("/progress")({
   head: () => ({
     meta: [
       { title: "Прогресс и карта нагрузки · Пульс" },
-      { name: "description", content: "Тепловая карта нагрузки на мышцы, советы и история тренировок." },
+      {
+        name: "description",
+        content: "Тепловая карта нагрузки на мышцы, советы и история тренировок.",
+      },
       { property: "og:title", content: "Прогресс и карта нагрузки · Пульс" },
-      { property: "og:description", content: "Тепловая карта нагрузки на мышцы и персональные советы." },
+      {
+        property: "og:description",
+        content: "Тепловая карта нагрузки на мышцы и персональные советы.",
+      },
     ],
   }),
   component: Progress,
 });
 
-const ACH = [
-  { id: "first", icon: "🌱", title: "Первый шаг", test: (n: number) => n >= 1 },
-  { id: "5", icon: "⭐", title: "5 тренировок", test: (n: number) => n >= 5 },
-  { id: "10", icon: "🏅", title: "10 тренировок", test: (n: number) => n >= 10 },
-  { id: "25", icon: "🏆", title: "25 тренировок", test: (n: number) => n >= 25 },
-  { id: "50", icon: "💎", title: "50 тренировок", test: (n: number) => n >= 50 },
-  { id: "100", icon: "👑", title: "Легенда", test: (n: number) => n >= 100 },
-];
+const MOODS = ["😞", "😐", "🙂", "😄", "🤩"] as const;
 
 function Progress() {
   const s = useApp();
@@ -34,9 +38,13 @@ function Progress() {
   const tips = advice(s.sessions);
   const total = cats.strength + cats.cardio + cats.stretch || 1;
   const totalMin = Math.round(s.sessions.reduce((a, x) => a + x.durationSec, 0) / 60);
+  const badges = evaluateBadges(s, new Date());
+  const challenge = monthlyChallenge(s.sessions, new Date());
+  const party = useCelebrate();
 
   return (
     <div className="space-y-5">
+      <Celebrate show={party} />
       <h1 className="pt-2 text-3xl font-extrabold tracking-tight">Прогресс</h1>
       <div className="grid grid-cols-3 gap-3">
         {[
@@ -56,7 +64,16 @@ function Progress() {
           <h2 className="font-bold">Карта нагрузки</h2>
           <div className="flex rounded-full bg-muted p-1 text-xs font-semibold">
             {[7, 30].map((d) => (
-              <button key={d} onClick={() => setDays(d)} className={cn("rounded-full px-3 py-1 transition-colors", days === d ? "bg-card shadow-sm" : "text-muted-foreground")}>{d} дн.</button>
+              <button
+                key={d}
+                onClick={() => setDays(d)}
+                className={cn(
+                  "rounded-full px-3 py-1 transition-colors",
+                  days === d ? "bg-card shadow-sm" : "text-muted-foreground",
+                )}
+              >
+                {d} дн.
+              </button>
             ))}
           </div>
         </div>
@@ -78,42 +95,69 @@ function Progress() {
         {tips.map((t, i) => {
           const Icon = t.tone === "good" ? CheckCircle2 : t.tone === "warn" ? AlertCircle : Info;
           return (
-            <div key={i} className="card-soft animate-rise flex gap-3 p-4" style={{ animationDelay: `${i * 0.08}s` }}>
-              <Icon className={cn("mt-0.5 h-5 w-5 shrink-0", t.tone === "good" ? "text-primary-shade" : t.tone === "warn" ? "text-flame-shade" : "text-sky-shade")} />
-              <div><p className="font-semibold">{t.title}</p><p className="text-sm text-muted-foreground">{t.text}</p></div>
+            <div
+              key={i}
+              className="card-soft animate-rise flex gap-3 p-4"
+              style={{ animationDelay: `${i * 0.08}s` }}
+            >
+              <Icon
+                className={cn(
+                  "mt-0.5 h-5 w-5 shrink-0",
+                  t.tone === "good"
+                    ? "text-primary-shade"
+                    : t.tone === "warn"
+                      ? "text-flame-shade"
+                      : "text-sky-shade",
+                )}
+              />
+              <div>
+                <p className="font-semibold">{t.title}</p>
+                <p className="text-sm text-muted-foreground">{t.text}</p>
+              </div>
             </div>
           );
         })}
       </section>
 
-      <section>
-        <h2 className="mb-3 text-lg font-bold">Награды</h2>
-        <div className="grid grid-cols-3 gap-3">
-          {ACH.map((a) => {
-            const got = a.test(s.sessions.length);
-            return (
-              <div key={a.id} className={cn("card-soft flex flex-col items-center gap-1 p-4 text-center", !got && "opacity-40 grayscale")}>
-                <span className="text-3xl">{a.icon}</span>
-                <span className="text-xs font-semibold">{a.title}</span>
-              </div>
-            );
-          })}
-        </div>
-      </section>
+      <MonthlyChallenge challenge={challenge} />
+
+      <Badges states={badges} />
 
       <section>
         <h2 className="mb-3 text-lg font-bold">История</h2>
         <div className="space-y-2">
-          {[...s.sessions].reverse().slice(0, 20).map((x) => (
-            <div key={x.id} className="card-soft flex items-center justify-between p-4">
-              <div>
-                <p className="font-semibold">{x.workoutName}</p>
-                <p className="text-xs text-muted-foreground">{new Date(x.date).toLocaleDateString("ru", { weekday: "short", day: "numeric", month: "long" })} · {Math.round(x.durationSec / 60)} мин</p>
+          {[...s.sessions]
+            .reverse()
+            .slice(0, 20)
+            .map((x) => (
+              <div key={x.id} className="card-soft p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="font-semibold">{x.workoutName}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {new Date(x.date).toLocaleDateString("ru", {
+                        weekday: "short",
+                        day: "numeric",
+                        month: "long",
+                      })}{" "}
+                      · {Math.round(x.durationSec / 60)} мин
+                    </p>
+                  </div>
+                  <span className="shrink-0 font-bold text-gold-shade">+{x.xp} XP</span>
+                </div>
+                {x.mood != null && (
+                  <p className="mt-1.5 text-lg" aria-label={`Самочувствие: ${x.mood} из 5`}>
+                    {MOODS[x.mood - 1]}
+                  </p>
+                )}
+                {x.note && <p className="mt-1 text-sm text-muted-foreground">«{x.note}»</p>}
               </div>
-              <span className="font-bold text-gold-shade">+{x.xp} XP</span>
-            </div>
-          ))}
-          {!s.sessions.length && <p className="py-6 text-center text-muted-foreground">Пока пусто — самое время начать!</p>}
+            ))}
+          {!s.sessions.length && (
+            <p className="py-6 text-center text-muted-foreground">
+              Пока пусто — самое время начать!
+            </p>
+          )}
         </div>
       </section>
     </div>

@@ -12,7 +12,7 @@ If BRIEF.md is empty or a field that changes UX/data is missing, ask me (one bat
 
 ## Workflow
 - Small fix: just do it. New feature, or a change touching 3+ files: write `docs/plan.md` (steps, files, risks) and wait for my OK.
-- Work in small steps. Commit after each working step (`feat:`, `fix:`, `refactor:`). Never commit a failing build.
+- Work in small steps. **Commit after each working step (`feat:`, `fix:`, `refactor:`) using commands: git status - then git add . - and then git commit -m "A brief summary of the changes you made to the project". Never commit a failing build.**
 - Do not ask permission for anything covered in this file. Ask only when a requirement is ambiguous in a way that changes UX, data, or scope.
 
 ## Definition of done (all of it, every task that touches UI or logic)

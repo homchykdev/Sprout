@@ -1,22 +1,63 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Download, ImagePlus, Link2, Play, Trash2, Upload } from "lucide-react";
+import { Download, ImagePlus, Link2, MoreVertical, Play, Trash2, Upload, X } from "lucide-react";
 import { LinkMedia } from "@/components/game/LinkMedia";
-import { clipsToText, parseClips, parseLink, ytThumb } from "@/lib/embed";
+import { PhotoCompareDialog } from "@/components/game/PhotoCompareDialog";
+import { PhotoGroupDialog } from "@/components/game/PhotoGroupDialog";
+import { PhotoTile } from "@/components/game/PhotoTile";
+import { PhotoTimeline, type Group } from "@/components/game/PhotoTimeline";
+import { consumeLongPress, markLongPress, useLongPress } from "@/hooks/use-long-press";
+import { clipsToText, parseClips, parseLink } from "@/lib/embed";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Mascot } from "@/components/game/Mascot";
 import { TapButton } from "@/components/game/TapButton";
-import { addFiles, addLink, exportMedia, importMedia, removeMedia, updateMedia, useBlobUrl, useMedia, type Album, type MediaItem } from "@/lib/media";
+import {
+  addFiles,
+  addLink,
+  exportMedia,
+  groupItems,
+  importMedia,
+  removeMedia,
+  updateMedia,
+  useBlobUrl,
+  useMedia,
+  type Album,
+  type MediaItem,
+} from "@/lib/media";
+import { useApp } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/gallery")({
   head: () => ({
     meta: [
       { title: "Фото прогресса и цели · Пульс" },
-      { name: "description", content: "Личная хронология фото и видео прогресса и доска целей фигуры." },
+      {
+        name: "description",
+        content: "Личная хронология фото и видео прогресса и доска целей фигуры.",
+      },
       { property: "og:title", content: "Фото прогресса и цели · Пульс" },
-      { property: "og:description", content: "Смотри, как меняется тело, и держи цель перед глазами." },
+      {
+        property: "og:description",
+        content: "Смотри, как меняется тело, и держи цель перед глазами.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
     ],
@@ -24,117 +65,377 @@ export const Route = createFileRoute("/gallery")({
   component: Gallery,
 });
 
-const fmtDay = (d: string) => new Date(d + "T00:00").toLocaleDateString("ru", { day: "numeric", month: "long" });
-const fmtMonth = (d: string) => { const s = new Date(d + "T00:00").toLocaleDateString("ru", { month: "long", year: "numeric" }); return s[0]!.toUpperCase() + s.slice(1); };
-
 function Gallery() {
   const [album, setAlbum] = useState<Album>("progress");
   const items = useMedia(album);
+  const ffmpegKey = useApp((s) => s.ffmpegKey);
   const [open, setOpen] = useState<MediaItem | null>(null);
   const [busy, setBusy] = useState(false);
   const [linkOpen, setLinkOpen] = useState(false);
+  const [selecting, setSelecting] = useState(false);
+  const [sel, setSel] = useState<string[]>([]);
+  const [groupOpen, setGroupOpen] = useState<string | null>(null);
+  const [compare, setCompare] = useState<MediaItem[]>([]);
+  const [delOpen, setDelOpen] = useState(false);
   const file = useRef<HTMLInputElement>(null);
   const arch = useRef<HTMLInputElement>(null);
+
+  const allIds = (items ?? []).map((x) => x.id);
 
   const upload = async (fs: FileList | null) => {
     if (!fs?.length) return;
     setBusy(true);
-    try { await addFiles([...fs], album); toast.success("Добавлено"); } catch { toast.error("Не удалось сохранить — возможно, мало места"); } finally { setBusy(false); }
+    try {
+      const { added, converted, skipped, tooHeavy } = await addFiles(
+        [...fs],
+        album,
+        ffmpegKey ? { ffmpegKey } : undefined,
+      );
+      if (added.length > 1) {
+        // Several angles at once = one group (front/side/back).
+        await groupItems(added);
+        toast.success(
+          converted.length
+            ? `Группа из ${added.length} создана · видео сжато в webp ✓`
+            : `Группа из ${added.length} фото создана`,
+        );
+      } else if (added.length === 1) {
+        toast.success(converted.length ? "Видео сжато в webp ✓" : "Добавлено");
+      }
+      if (skipped.length)
+        toast.error(
+          skipped.length === 1
+            ? "Файл не принят — нужны JPG, PNG, GIF, HEIC или MP4"
+            : `Не принято файлов: ${skipped.length} — нужны JPG, PNG, GIF, HEIC или MP4`,
+        );
+      if (tooHeavy.length)
+        toast.error("Видео должно быть короче 30 сек и легче 50 МБ — обрежь его и попробуй снова");
+      if (!added.length && !skipped.length && !tooHeavy.length)
+        toast.error("Не удалось сохранить — возможно, мало места");
+    } catch {
+      toast.error("Не удалось сохранить — возможно, мало места");
+    } finally {
+      setBusy(false);
+    }
   };
   const save = async () => {
     const b = await exportMedia(album);
     const a = document.createElement("a");
-    a.href = URL.createObjectURL(b); a.download = `pulse-${album === "progress" ? "progress" : "goals"}-${new Date().toISOString().slice(0, 10)}.json`; a.click();
+    a.href = URL.createObjectURL(b);
+    a.download = `pulse-${album === "progress" ? "progress" : "goals"}-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  };
+
+  /** Long-press on a card: enter multi-select with this item checked. */
+  const enterSelect = (ids: string[]) => {
+    if (!selecting) setSelecting(true);
+    setSel((prev) => [...new Set([...prev, ...ids])]);
+  };
+  const exitSelect = () => {
+    setSelecting(false);
+    setSel([]);
+  };
+  const toggle = (id: string) =>
+    setSel(sel.includes(id) ? sel.filter((x) => x !== id) : [...sel, id]);
+  const toggleGroup = (g: Group) => {
+    const ids = g.items.map((x) => x.id);
+    const all = ids.every((id) => sel.includes(id));
+    setSel(all ? sel.filter((id) => !ids.includes(id)) : [...new Set([...sel, ...ids])]);
+  };
+  /** Single tap: toggle in select mode (ignoring the click after a hold), open otherwise. */
+  const tapItem = (m: MediaItem) => {
+    if (consumeLongPress()) return;
+    if (selecting) toggle(m.id);
+    else setOpen(m);
+  };
+  const tapGroup = (g: Group) => {
+    if (consumeLongPress()) return;
+    if (selecting) toggleGroup(g);
+    else setGroupOpen(g.id);
+  };
+  const makeGroup = async () => {
+    if (sel.length < 2) return;
+    await groupItems(sel);
+    toast.success(`Группа из ${sel.length} фото создана`);
+    exitSelect();
+  };
+  const startCompare = () => {
+    const list = (items ?? [])
+      .filter((x) => sel.includes(x.id))
+      .sort((a, b) => a.date.localeCompare(b.date) || a.createdAt - b.createdAt);
+    if (list.length !== 2) return;
+    setCompare(list as [MediaItem, MediaItem]);
+    exitSelect();
+  };
+  const selectAll = () => setSel(sel.length === allIds.length ? [] : allIds);
+  const doDelete = async () => {
+    for (const id of sel) await removeMedia(id);
+    toast.success(sel.length === 1 ? "Удалено" : `Удалено: ${sel.length}`);
+    setDelOpen(false);
+    exitSelect();
   };
 
   return (
     <div className="space-y-4">
       <h1 className="pt-2 text-3xl font-extrabold tracking-tight">Фото</h1>
       <div className="flex rounded-full bg-muted p-1 text-sm font-semibold">
-        {([["progress", "Мой прогресс"], ["goal", "Цели фигуры"]] as const).map(([id, l]) => (
-          <button key={id} onClick={() => setAlbum(id)} className={cn("flex-1 rounded-full py-2 transition-colors", album === id ? "bg-card shadow-sm" : "text-muted-foreground")}>{l}</button>
+        {(
+          [
+            ["progress", "Мой прогресс"],
+            ["goal", "Цели фигуры"],
+          ] as const
+        ).map(([id, l]) => (
+          <button
+            key={id}
+            onClick={() => {
+              setAlbum(id);
+              exitSelect();
+            }}
+            className={cn(
+              "min-h-[44px] flex-1 rounded-full transition-colors",
+              album === id ? "bg-card shadow-sm" : "text-muted-foreground",
+            )}
+          >
+            {l}
+          </button>
         ))}
       </div>
       <div className="flex gap-2">
-        <TapButton className="flex-1" disabled={busy} onClick={() => file.current?.click()}><ImagePlus className="h-4 w-4" /> {busy ? "Сохраняю…" : "Загрузить"}</TapButton>
-        <TapButton variant="soft" aria-label="Добавить по ссылке" onClick={() => setLinkOpen(true)}><Link2 className="h-4 w-4" /></TapButton>
-        <TapButton variant="soft" aria-label="Сохранить архив" onClick={save}><Download className="h-4 w-4" /></TapButton>
-        <TapButton variant="soft" aria-label="Загрузить архив" onClick={() => arch.current?.click()}><Upload className="h-4 w-4" /></TapButton>
+        <TapButton className="flex-1" disabled={busy} onClick={() => file.current?.click()}>
+          <ImagePlus className="h-4 w-4" /> {busy ? "Сохраняю…" : "Загрузить"}
+        </TapButton>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <TapButton variant="soft" size="icon" aria-label="Ещё действия">
+              <MoreVertical className="h-5 w-5" />
+            </TapButton>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="min-w-56 rounded-2xl">
+            <DropdownMenuItem
+              className="min-h-[44px] text-[15px]"
+              onSelect={() => setLinkOpen(true)}
+            >
+              <Link2 className="h-4 w-4" /> Добавить по ссылке
+            </DropdownMenuItem>
+            <DropdownMenuItem className="min-h-[44px] text-[15px]" onSelect={() => void save()}>
+              <Download className="h-4 w-4" /> Сохранить архив
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="min-h-[44px] text-[15px]"
+              onSelect={() => arch.current?.click()}
+            >
+              <Upload className="h-4 w-4" /> Загрузить архив
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
-      <input ref={file} type="file" accept="image/*,video/*" multiple hidden onChange={(e) => { upload(e.target.files); e.target.value = ""; }} />
-      <input ref={arch} type="file" accept="application/json" hidden onChange={async (e) => {
-        const f = e.target.files?.[0]; e.target.value = "";
-        if (!f) return;
-        try { const n = await importMedia(f); toast.success(`Загружено: ${n}`); } catch { toast.error("Это не архив фото Пульса"); }
-      }} />
+      {selecting && (
+        <div className="card-soft animate-pop space-y-2.5 p-3">
+          <div className="flex items-center gap-2">
+            <span className="flex-1 text-sm font-semibold tabular">Выбрано: {sel.length}</span>
+            <TapButton variant="ghost" size="icon" aria-label="Закрыть выбор" onClick={exitSelect}>
+              <X className="h-5 w-5" />
+            </TapButton>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <TapButton size="sm" variant="soft" className="min-h-[44px]" onClick={selectAll}>
+              {sel.length === allIds.length ? "Снять выбор" : "Выбрать всё"}
+            </TapButton>
+            <TapButton
+              size="sm"
+              className="min-h-[44px]"
+              disabled={sel.length < 2}
+              onClick={makeGroup}
+            >
+              В группу
+            </TapButton>
+            <TapButton
+              size="sm"
+              variant="soft"
+              className="min-h-[44px]"
+              disabled={sel.length !== 2}
+              onClick={startCompare}
+            >
+              Сравнить
+            </TapButton>
+            <TapButton
+              size="sm"
+              variant="danger"
+              className="min-h-[44px]"
+              disabled={!sel.length}
+              onClick={() => setDelOpen(true)}
+            >
+              <Trash2 className="h-4 w-4" /> Удалить
+            </TapButton>
+          </div>
+          {sel.length === 1 && (
+            <p className="text-xs text-muted-foreground">
+              Выбери ещё одно фото, чтобы сравнить «до / после».
+            </p>
+          )}
+        </div>
+      )}
+      <input
+        ref={file}
+        type="file"
+        accept="image/*,video/*"
+        multiple
+        hidden
+        onChange={(e) => {
+          upload(e.target.files);
+          e.target.value = "";
+        }}
+      />
+      <input
+        ref={arch}
+        type="file"
+        accept="application/json"
+        hidden
+        onChange={async (e) => {
+          const f = e.target.files?.[0];
+          e.target.value = "";
+          if (!f) return;
+          try {
+            const n = await importMedia(f);
+            toast.success(`Загружено: ${n}`);
+          } catch {
+            toast.error("Это не архив фото Пульса");
+          }
+        }}
+      />
 
-      {items === null ? null : !items.length ? (
+      {items === null ? (
+        <div className="grid grid-cols-2 gap-3" aria-label="Загрузка фото">
+          {[0, 1, 2, 3].map((i) => (
+            <Skeleton key={i} className="aspect-[3/4] w-full rounded-2xl" />
+          ))}
+        </div>
+      ) : !items.length ? (
         <div className="flex flex-col items-center gap-2 py-12 text-center">
           <Mascot mood="cheer" size={90} />
-          <p className="font-semibold">{album === "progress" ? "Сделай первое фото — через месяц скажешь спасибо" : "Добавь фото фигуры мечты"}</p>
+          <p className="font-semibold">
+            {album === "progress"
+              ? "Сделай первое фото — через месяц скажешь спасибо"
+              : "Добавь фото фигуры мечты"}
+          </p>
           <p className="text-sm text-muted-foreground">Всё хранится только на этом устройстве.</p>
         </div>
       ) : album === "progress" ? (
-        <Timeline items={items} onOpen={setOpen} />
+        <>
+          <PhotoTimeline
+            items={items}
+            selectMode={selecting}
+            selected={sel}
+            onToggle={toggle}
+            onToggleGroup={toggleGroup}
+            onOpen={setOpen}
+            onOpenGroup={setGroupOpen}
+            onHoldItem={(m) => enterSelect([m.id])}
+            onHoldGroup={(g) => enterSelect(g.items.map((x) => x.id))}
+          />
+          {!selecting && <HoldHint />}
+        </>
       ) : (
-        <div className="grid grid-cols-2 gap-3">
-          {items.map((m) => <Tile key={m.id} m={m} onClick={() => setOpen(m)} big />)}
-        </div>
+        <>
+          <div className="grid grid-cols-2 gap-3">
+            {items.map((m) => (
+              <GoalCell
+                key={m.id}
+                m={m}
+                selectMode={selecting}
+                selected={sel.includes(m.id)}
+                onTap={() => tapItem(m)}
+                onHold={() => enterSelect([m.id])}
+              />
+            ))}
+          </div>
+          {!selecting && <HoldHint />}
+        </>
       )}
       <Viewer item={open} onClose={() => setOpen(null)} />
+      <PhotoGroupDialog
+        groupId={groupOpen}
+        items={items ?? []}
+        onClose={() => setGroupOpen(null)}
+        onView={setOpen}
+      />
+      <PhotoCompareDialog items={compare} onClose={() => setCompare([])} />
       <LinkDialog open={linkOpen} album={album} onClose={() => setLinkOpen(false)} />
+
+      <AlertDialog open={delOpen} onOpenChange={setDelOpen}>
+        <AlertDialogContent className="rounded-3xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Удалить {sel.length === 1 ? "фото" : `${sel.length} фото`} навсегда?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Файлы пропадут с этого устройства без возможности восстановления. Группы, в которых
+              они были, распадутся.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="min-h-[44px]">Отмена</AlertDialogCancel>
+            <AlertDialogAction
+              className="min-h-[44px] bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => void doDelete()}
+            >
+              Удалить
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
 
-function Timeline({ items, onOpen }: { items: MediaItem[]; onOpen: (m: MediaItem) => void }) {
-  const first = items[items.length - 1]!.date;
-  const months: [string, MediaItem[]][] = [];
-  for (const m of items) {
-    const k = m.date.slice(0, 7);
-    const last = months[months.length - 1];
-    if (last && last[0] === k) last[1].push(m); else months.push([k, [m]]);
-  }
+function HoldHint() {
   return (
-    <div className="space-y-6">
-      {months.map(([k, list]) => (
-        <section key={k}>
-          <h2 className="mb-3 text-lg font-bold">{fmtMonth(k + "-01")}</h2>
-          <div className="relative space-y-4 border-l-2 border-muted pl-5">
-            {list.map((m) => {
-              const day = Math.round((+new Date(m.date) - +new Date(first)) / 864e5);
-              return (
-                <div key={m.id} className="relative">
-                  <span className="absolute -left-[27px] top-3 h-3 w-3 rounded-full border-2 border-card bg-primary" />
-                  <button onClick={() => onOpen(m)} className="card-soft press flex w-full gap-3 p-3 text-left">
-                    <Tile m={m} className="h-24 w-20 shrink-0" />
-                    <div className="min-w-0 flex-1 py-1">
-                      <p className="text-xs font-bold uppercase tracking-wide text-primary-shade">{fmtDay(m.date)} · {day === 0 ? "старт" : `день ${day}`}</p>
-                      <p className="truncate font-semibold">{m.title || (m.kind === "video" ? "Видео" : "Фото")}</p>
-                      {m.note && <p className="line-clamp-2 text-sm text-muted-foreground">{m.note}</p>}
-                    </div>
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-      ))}
-    </div>
+    <p className="text-center text-xs text-muted-foreground">
+      Удерживай фото, чтобы выбрать несколько — объединить в группу, сравнить или удалить.
+    </p>
   );
 }
 
-function Tile({ m, onClick, className, big }: { m: MediaItem; onClick?: () => void; className?: string; big?: boolean }) {
-  const url = useBlobUrl(m.blob);
-  const Tag = onClick ? "button" : "div";
+/** Goal-album cell: tap opens, hold enters multi-select. */
+function GoalCell({
+  m,
+  selectMode,
+  selected,
+  onTap,
+  onHold,
+}: {
+  m: MediaItem;
+  selectMode: boolean;
+  selected: boolean;
+  onTap: () => void;
+  onHold: () => void;
+}) {
+  const press = useLongPress(() => {
+    markLongPress();
+    onHold();
+  });
   return (
-    <Tag onClick={onClick} className={cn("press relative overflow-hidden rounded-2xl bg-muted", big && "aspect-[3/4] w-full", className)}>
-      {m.url ? <LinkThumb url={m.url} /> : url && (m.kind === "image" ? <img src={url} alt={m.title} loading="lazy" className="h-full w-full object-cover" /> : <video src={url + "#t=0.1"} muted playsInline preload="metadata" className="h-full w-full object-cover" />)}
-      {m.url && <span className="absolute left-1.5 top-1.5 rounded-full bg-foreground/60 p-1 text-background"><Link2 className="h-3 w-3" /></span>}
-      {m.kind === "video" && <span className="absolute bottom-1.5 right-1.5 rounded-full bg-foreground/60 p-1 text-background"><Play className="h-3 w-3" fill="currentColor" /></span>}
-      {big && m.title && <span className="absolute inset-x-0 bottom-0 bg-foreground/50 px-2 py-1.5 text-left text-xs font-semibold text-background">{m.title}</span>}
-    </Tag>
+    <div
+      {...press}
+      role="checkbox"
+      aria-checked={selectMode ? selected : undefined}
+      aria-label={m.title || "Фото"}
+      tabIndex={0}
+      onClick={() => {
+        if (consumeLongPress()) return;
+        onTap();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onTap();
+        }
+      }}
+      className="cursor-pointer rounded-2xl outline-none [touch-action:pan-y] focus-visible:ring-4 focus-visible:ring-ring/30"
+    >
+      <PhotoTile m={m} big selectMode={selectMode} selected={selected} />
+    </div>
   );
 }
 
@@ -150,10 +451,12 @@ function Viewer({ item, onClose }: { item: MediaItem | null; onClose: () => void
 
 function ViewerBody({ item, onClose }: { item: MediaItem; onClose: () => void }) {
   const url = useBlobUrl(item.blob);
+  const [broken, setBroken] = useState(false);
   const [title, setTitle] = useState(item.title);
   const [note, setNote] = useState(item.note);
   const [date, setDate] = useState(item.date);
   const [clips, setClips] = useState(clipsToText(item.clips));
+  const [delOpen, setDelOpen] = useState(false);
   const lk = item.url ? parseLink(item.url) : null;
   const canClip = lk?.type === "youtube" || lk?.type === "video";
   const field = "w-full rounded-2xl border-2 px-4 outline-none focus:border-primary";
@@ -161,29 +464,131 @@ function ViewerBody({ item, onClose }: { item: MediaItem; onClose: () => void })
     <>
       <DialogTitle className="sr-only">{item.title || "Медиа"}</DialogTitle>
       <div className="overflow-hidden rounded-2xl bg-muted">
-        {item.url ? <div className="aspect-video"><LinkMedia url={item.url} clips={parseClips(clips)} controls muted={false} /></div>
-          : url && (item.kind === "image" ? <img src={url} alt={item.title} className="max-h-[50vh] w-full object-contain" /> : <video src={url} controls playsInline className="max-h-[50vh] w-full" />)}
+        {item.url ? (
+          <div className="aspect-video">
+            <LinkMedia url={item.url} clips={parseClips(clips)} controls muted={false} />
+          </div>
+        ) : !item.blob || broken ? (
+          <div className="flex aspect-video flex-col items-center justify-center gap-2 text-muted-foreground">
+            <ImagePlus className="h-10 w-10 opacity-40" />
+            <p className="text-sm font-semibold">
+              {!item.blob ? "Файл отсутствует на устройстве" : "Не удалось показать файл"}
+            </p>
+          </div>
+        ) : !url ? (
+          <div className="flex aspect-video animate-pulse items-center justify-center text-muted-foreground">
+            <ImagePlus className="h-10 w-10 opacity-40" />
+          </div>
+        ) : item.kind === "image" ? (
+          <img
+            src={url}
+            alt={item.title}
+            onError={() => setBroken(true)}
+            className="max-h-[50vh] w-full object-contain"
+          />
+        ) : (
+          <video
+            src={url}
+            controls
+            playsInline
+            onError={() => setBroken(true)}
+            className="max-h-[50vh] w-full"
+          />
+        )}
       </div>
-      {item.url && canClip && <textarea rows={2} className={cn(field, "py-3")} placeholder={"Таймкоды (необязательно):\n1:20-1:45"} value={clips} onChange={(e) => setClips(e.target.value)} />}
-      <input className={cn(field, "h-12")} placeholder="Название (необязательно)" value={title} onChange={(e) => setTitle(e.target.value)} />
-      <textarea rows={3} className={cn(field, "py-3")} placeholder="Описание или заметки: вес, самочувствие, что изменилось…" value={note} onChange={(e) => setNote(e.target.value)} />
-      <label className="text-sm font-semibold">Дата<input type="date" className={cn(field, "mt-1 h-12")} value={date} onChange={(e) => setDate(e.target.value)} /></label>
+      {item.url && canClip && (
+        <textarea
+          rows={2}
+          className={cn(field, "py-3")}
+          placeholder={"Таймкоды (необязательно):\n1:20-1:45"}
+          value={clips}
+          onChange={(e) => setClips(e.target.value)}
+        />
+      )}
+      <input
+        className={cn(field, "h-12")}
+        placeholder="Название (необязательно)"
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+      />
+      <textarea
+        rows={3}
+        className={cn(field, "py-3")}
+        placeholder="Описание или заметки: вес, самочувствие, что изменилось…"
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+      />
+      <label className="text-sm font-semibold">
+        Дата
+        <input
+          type="date"
+          className={cn(field, "mt-1 h-12")}
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+        />
+      </label>
+      {item.kind === "video" && (
+        <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
+          <Play className="h-4 w-4" /> Видео
+        </span>
+      )}
       <div className="flex gap-2">
-        <TapButton className="flex-1" onClick={async () => { await updateMedia(item.id, { title: title.trim(), note: note.trim(), date: date || item.date, clips: item.url ? parseClips(clips) : undefined }); toast.success("Сохранено"); onClose(); }}>Сохранить</TapButton>
-        <TapButton variant="soft" aria-label="Удалить" onClick={async () => { if (confirm("Удалить навсегда?")) { await removeMedia(item.id); onClose(); } }}><Trash2 className="h-4 w-4" /></TapButton>
+        <TapButton
+          className="flex-1"
+          onClick={async () => {
+            await updateMedia(item.id, {
+              title: title.trim(),
+              note: note.trim(),
+              date: date || item.date,
+              clips: item.url ? parseClips(clips) : undefined,
+            });
+            toast.success("Сохранено");
+            onClose();
+          }}
+        >
+          Сохранить
+        </TapButton>
+        <TapButton variant="soft" aria-label="Удалить" onClick={() => setDelOpen(true)}>
+          <Trash2 className="h-4 w-4" />
+        </TapButton>
       </div>
+      <AlertDialog open={delOpen} onOpenChange={setDelOpen}>
+        <AlertDialogContent className="rounded-3xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Удалить фото навсегда?</AlertDialogTitle>
+            <AlertDialogDescription>
+              «{title.trim() || "Без названия"}» пропадёт с устройства без возможности
+              восстановления.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="min-h-[44px]">Отмена</AlertDialogCancel>
+            <AlertDialogAction
+              className="min-h-[44px] bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={async () => {
+                await removeMedia(item.id);
+                setDelOpen(false);
+                onClose();
+              }}
+            >
+              Удалить
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
 
-function LinkThumb({ url }: { url: string }) {
-  const k = parseLink(url);
-  if (k?.type === "youtube") return <img src={ytThumb(k.id)} alt="" loading="lazy" className="h-full w-full object-cover" />;
-  if (k?.type === "image") return <img src={k.url} alt="" loading="lazy" referrerPolicy="no-referrer" className="h-full w-full object-cover" />;
-  return <div className="flex h-full w-full items-center justify-center text-muted-foreground"><Link2 className="h-8 w-8" /></div>;
-}
-
-function LinkDialog({ open, album, onClose }: { open: boolean; album: Album; onClose: () => void }) {
+function LinkDialog({
+  open,
+  album,
+  onClose,
+}: {
+  open: boolean;
+  album: Album;
+  onClose: () => void;
+}) {
   const [url, setUrl] = useState("");
   const [clips, setClips] = useState("");
   const k = parseLink(url);
@@ -193,15 +598,47 @@ function LinkDialog({ open, album, onClose }: { open: boolean; album: Album; onC
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-h-[92vh] overflow-y-auto rounded-3xl">
         <DialogTitle>Добавить по ссылке</DialogTitle>
-        <input className={cn(field, "h-12")} placeholder="https://youtube.com/… или ссылка на фото/видео" value={url} onChange={(e) => setUrl(e.target.value)} />
+        <input
+          className={cn(field, "h-12")}
+          placeholder="https://youtube.com/… или ссылка на фото/видео"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+        />
         {url && !k && <p className="text-sm text-destructive">Это не похоже на ссылку</p>}
-        {k && <div className="aspect-video overflow-hidden rounded-2xl bg-muted"><LinkMedia url={url} clips={parseClips(clips)} controls /></div>}
-        {canClip && <textarea rows={2} className={cn(field, "py-3")} placeholder={"Таймкоды (необязательно), каждый с новой строки:\n1:20-1:45"} value={clips} onChange={(e) => setClips(e.target.value)} />}
-        <p className="text-xs text-muted-foreground">Файл не скачивается — он загрузится из интернета, когда ты его откроешь.</p>
-        <TapButton disabled={!k} onClick={async () => {
-          await addLink(url.trim(), album, k!.type === "image" ? "image" : "video", canClip ? parseClips(clips) : undefined);
-          toast.success("Добавлено"); setUrl(""); setClips(""); onClose();
-        }}>Добавить</TapButton>
+        {k && (
+          <div className="aspect-video overflow-hidden rounded-2xl bg-muted">
+            <LinkMedia url={url} clips={parseClips(clips)} controls />
+          </div>
+        )}
+        {canClip && (
+          <textarea
+            rows={2}
+            className={cn(field, "py-3")}
+            placeholder={"Таймкоды (необязательно), каждый с новой строки:\n1:20-1:45"}
+            value={clips}
+            onChange={(e) => setClips(e.target.value)}
+          />
+        )}
+        <p className="text-xs text-muted-foreground">
+          Файл не скачивается — он загрузится из интернета, когда ты его откроешь.
+        </p>
+        <TapButton
+          disabled={!k}
+          onClick={async () => {
+            await addLink(
+              url.trim(),
+              album,
+              k!.type === "image" ? "image" : "video",
+              canClip ? parseClips(clips) : undefined,
+            );
+            toast.success("Добавлено");
+            setUrl("");
+            setClips("");
+            onClose();
+          }}
+        >
+          Добавить
+        </TapButton>
       </DialogContent>
     </Dialog>
   );

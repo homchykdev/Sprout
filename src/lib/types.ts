@@ -52,6 +52,8 @@ export interface WorkoutItem {
   reps: number;
   seconds: number;
   rest: number;
+  /** Tempo for this workout (beats/min). Falls back to the exercise's recommended bpm. */
+  bpm?: number | undefined;
 }
 
 export interface Workout {
@@ -69,11 +71,16 @@ export interface SessionLog {
   durationSec: number;
   xp: number;
   sets: { exerciseId: string; muscles: MuscleKey[]; category: Category; count: number }[];
+  /** Diary: how the user felt after the workout, 1–5 stars. */
+  mood?: 1 | 2 | 3 | 4 | 5 | undefined;
+  /** Diary: personal note after the workout. */
+  note?: string | undefined;
 }
 
 export interface AiSettings {
   provider: "gemini" | "openai";
-  apiKey: string;
+  /** User's API keys in priority order; the first with remaining quota is used. */
+  keys: string[];
   baseUrl: string;
   model: string;
 }
@@ -84,9 +91,15 @@ export interface Vacation {
 }
 
 const LEGACY: Record<string, MuscleKey[]> = {
-  shoulders: ["front-deltoids", "back-deltoids"], forearms: ["forearm"], traps: ["trapezius"], lats: ["upper-back"],
-  lower_back: ["lower-back"], glutes: ["gluteal"], quads: ["quadriceps"], hamstrings: ["hamstring"],
+  shoulders: ["front-deltoids", "back-deltoids"],
+  forearms: ["forearm"],
+  traps: ["trapezius"],
+  lats: ["upper-back"],
+  lower_back: ["lower-back"],
+  glutes: ["gluteal"],
+  quads: ["quadriceps"],
+  hamstrings: ["hamstring"],
 };
 /** Converts legacy (v1) muscle keys to the current map keys. */
 export const normalizeMuscles = (list: string[]): MuscleKey[] =>
-  Array.from(new Set(list.flatMap((m) => (m in MUSCLES ? [m as MuscleKey] : LEGACY[m] ?? []))));
+  Array.from(new Set(list.flatMap((m) => (m in MUSCLES ? [m as MuscleKey] : (LEGACY[m] ?? [])))));

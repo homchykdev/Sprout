@@ -15,7 +15,8 @@ export function speak(text: string, opts: { interrupt?: boolean } = {}) {
   const u = new SpeechSynthesisUtterance(text);
   u.lang = "ru-RU";
   u.rate = v.rate;
-  const voice = speechSynthesis.getVoices().find((x) => x.voiceURI === v.voiceURI) ?? listVoices()[0];
+  const voice =
+    speechSynthesis.getVoices().find((x) => x.voiceURI === v.voiceURI) ?? listVoices()[0];
   if (voice) u.voice = voice;
   speechSynthesis.speak(u);
 }
@@ -31,7 +32,8 @@ export function beep(kind: "tick" | "go" | "end" | "metro") {
   try {
     const a = audio();
     if (a.state === "suspended") void a.resume();
-    const o = a.createOscillator(), g = a.createGain();
+    const o = a.createOscillator(),
+      g = a.createGain();
     const cfg = { tick: [660, 0.12], go: [990, 0.25], end: [520, 0.45], metro: [1400, 0.04] }[kind];
     o.frequency.value = cfg[0]!;
     o.type = kind === "metro" ? "square" : "sine";
@@ -42,7 +44,8 @@ export function beep(kind: "tick" | "go" | "end" | "metro") {
     o.start();
     o.stop(a.currentTime + cfg[1]!);
     if (kind === "end") {
-      const o2 = a.createOscillator(), g2 = a.createGain();
+      const o2 = a.createOscillator(),
+        g2 = a.createGain();
       o2.frequency.value = 780;
       g2.gain.setValueAtTime(vol, a.currentTime + 0.2);
       g2.gain.exponentialRampToValueAtTime(0.0001, a.currentTime + 0.7);
@@ -57,5 +60,65 @@ export function beep(kind: "tick" | "go" | "end" | "metro") {
 
 /** Unlocks audio on iOS/Android — call from a user gesture. */
 export function primeAudio() {
-  try { void audio().resume(); } catch { /* noop */ }
+  try {
+    void audio().resume();
+  } catch {
+    /* noop */
+  }
+}
+
+function tone(
+  a: AudioContext,
+  freq: number,
+  at: number,
+  dur: number,
+  vol: number,
+  type: OscillatorType,
+) {
+  const o = a.createOscillator(),
+    g = a.createGain();
+  o.frequency.value = freq;
+  o.type = type;
+  g.gain.setValueAtTime(0.0001, at);
+  g.gain.exponentialRampToValueAtTime(Math.max(0.0002, vol), at + 0.02);
+  g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+  o.connect(g).connect(a.destination);
+  o.start(at);
+  o.stop(at + dur + 0.05);
+}
+
+/**
+ * Branded victory chords, synthesized with Web Audio (offline, no assets):
+ * ascending major-triad arpeggio — the classic triumph motif, voiced per theme.
+ */
+export function fanfare(kind: "set" | "workout") {
+  const v = useApp.getState().voice;
+  if (v.muted || !v.beeps) return;
+  try {
+    const a = audio();
+    if (a.state === "suspended") void a.resume();
+    const wave: OscillatorType =
+      v.theme === "triumph" ? "sawtooth" : v.theme === "calm" ? "sine" : "triangle";
+    const vol = v.volume * (v.theme === "triumph" ? 0.3 : 0.5);
+    const t = a.currentTime;
+    if (kind === "set") {
+      // Bright two-note lift: root → fifth.
+      const lift = v.theme === "calm" ? [659.25, 987.77] : [880, 1318.51];
+      tone(a, lift[0]!, t, 0.18, vol, wave);
+      tone(a, lift[1]!, t + 0.11, 0.32, vol, wave);
+      return;
+    }
+    // Workout victory: C–E–G–C arpeggio + long tonic, octave per theme.
+    const seq =
+      v.theme === "triumph"
+        ? [261.63, 329.63, 392.0, 523.25, 659.25]
+        : v.theme === "calm"
+          ? [392.0, 493.88, 587.33, 783.99]
+          : [523.25, 659.25, 783.99, 1046.5];
+    seq.forEach((f, i) => tone(a, f, t + i * 0.11, 0.34, vol, wave));
+    tone(a, seq[0]! * 2, t + seq.length * 0.11, 0.9, vol * 0.9, wave);
+    tone(a, seq[1]! * 2, t + seq.length * 0.11, 0.9, vol * 0.5, wave);
+  } catch {
+    /* audio unavailable */
+  }
 }
