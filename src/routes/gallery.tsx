@@ -1,12 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Download, ImagePlus, Link2, MoreVertical, Play, Trash2, Upload, X } from "lucide-react";
+import { Download, ImagePlus, Link2, MoreVertical, Pencil, Trash2, Upload, X } from "lucide-react";
 import { LinkMedia } from "@/components/game/LinkMedia";
 import { PhotoCompareDialog } from "@/components/game/PhotoCompareDialog";
+import { PhotoEditDialog } from "@/components/game/PhotoEditDialog";
 import { PhotoGroupDialog } from "@/components/game/PhotoGroupDialog";
+import { PhotoLightbox } from "@/components/game/PhotoLightbox";
 import { PhotoTile } from "@/components/game/PhotoTile";
 import { PhotoTimeline, type Group } from "@/components/game/PhotoTimeline";
 import { consumeLongPress, markLongPress, useLongPress } from "@/hooks/use-long-press";
-import { clipsToText, parseClips, parseLink } from "@/lib/embed";
+import { parseClips, parseLink } from "@/lib/embed";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -36,8 +38,7 @@ import {
   groupItems,
   importMedia,
   removeMedia,
-  updateMedia,
-  useBlobUrl,
+  ungroup,
   useMedia,
   type Album,
   type MediaItem,
@@ -69,7 +70,9 @@ function Gallery() {
   const [album, setAlbum] = useState<Album>("progress");
   const items = useMedia(album);
   const ffmpegKey = useApp((s) => s.ffmpegKey);
-  const [open, setOpen] = useState<MediaItem | null>(null);
+  const [light, setLight] = useState<{ items: MediaItem[]; index: number } | null>(null);
+  const [editItem, setEditItem] = useState<MediaItem | null>(null);
+  const [ungroupId, setUngroupId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [linkOpen, setLinkOpen] = useState(false);
   const [selecting, setSelecting] = useState(false);
@@ -143,16 +146,26 @@ function Gallery() {
     const all = ids.every((id) => sel.includes(id));
     setSel(all ? sel.filter((id) => !ids.includes(id)) : [...new Set([...sel, ...ids])]);
   };
-  /** Single tap: toggle in select mode (ignoring the click after a hold), open otherwise. */
+  /** Single tap: toggle in select mode (ignoring the click after a hold), else full-screen gallery. */
+  const openAlbumAt = (m: MediaItem) => {
+    const list = items ?? [];
+    const i = list.findIndex((x) => x.id === m.id);
+    if (i >= 0) setLight({ items: list, index: i });
+  };
+  const openGroupAt = (g: Group, from?: MediaItem) => {
+    const list = [...g.items].sort((a, b) => a.createdAt - b.createdAt);
+    const i = from ? list.findIndex((x) => x.id === from.id) : 0;
+    setLight({ items: list, index: Math.max(0, i) });
+  };
   const tapItem = (m: MediaItem) => {
     if (consumeLongPress()) return;
     if (selecting) toggle(m.id);
-    else setOpen(m);
+    else openAlbumAt(m);
   };
   const tapGroup = (g: Group) => {
     if (consumeLongPress()) return;
     if (selecting) toggleGroup(g);
-    else setGroupOpen(g.id);
+    else openGroupAt(g, g.cover);
   };
   const makeGroup = async () => {
     if (sel.length < 2) return;
@@ -329,10 +342,21 @@ function Gallery() {
             selected={sel}
             onToggle={toggle}
             onToggleGroup={toggleGroup}
-            onOpen={setOpen}
-            onOpenGroup={setGroupOpen}
+            onOpen={tapItem}
+            onOpenGroup={tapGroup}
             onHoldItem={(m) => enterSelect([m.id])}
             onHoldGroup={(g) => enterSelect(g.items.map((x) => x.id))}
+            onEdit={setEditItem}
+            onDelete={(m) => {
+              setSel([m.id]);
+              setDelOpen(true);
+            }}
+            onCover={setGroupOpen}
+            onUngroup={setUngroupId}
+            onDeleteGroup={(g) => {
+              setSel(g.items.map((x) => x.id));
+              setDelOpen(true);
+            }}
           />
           {!selecting && <HoldHint />}
         </>
@@ -347,21 +371,68 @@ function Gallery() {
                 selected={sel.includes(m.id)}
                 onTap={() => tapItem(m)}
                 onHold={() => enterSelect([m.id])}
+                onEdit={() => setEditItem(m)}
+                onDelete={() => {
+                  setSel([m.id]);
+                  setDelOpen(true);
+                }}
               />
             ))}
           </div>
           {!selecting && <HoldHint />}
         </>
       )}
-      <Viewer item={open} onClose={() => setOpen(null)} />
+      {light && (
+        <PhotoLightbox
+          items={light.items}
+          index={Math.min(light.index, light.items.length - 1)}
+          onIndex={(i) => setLight({ items: light.items, index: i })}
+          onClose={() => setLight(null)}
+        />
+      )}
+      <PhotoEditDialog item={editItem} onClose={() => setEditItem(null)} />
       <PhotoGroupDialog
         groupId={groupOpen}
         items={items ?? []}
         onClose={() => setGroupOpen(null)}
-        onView={setOpen}
+        onView={(m) => {
+          const g = (items ?? []).find((x) => x.id === m.id)?.groupId;
+          const list = (items ?? [])
+            .filter((x) => x.groupId === g)
+            .sort((a, b) => a.createdAt - b.createdAt);
+          const i = list.findIndex((x) => x.id === m.id);
+          if (list.length) {
+            setGroupOpen(null);
+            setLight({ items: list, index: Math.max(0, i) });
+          }
+        }}
       />
       <PhotoCompareDialog items={compare} onClose={() => setCompare([])} />
       <LinkDialog open={linkOpen} album={album} onClose={() => setLinkOpen(false)} />
+
+      <AlertDialog open={ungroupId != null} onOpenChange={(o) => !o && setUngroupId(null)}>
+        <AlertDialogContent className="rounded-3xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Разгруппировать?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Фото останутся в ленте, группа распадётся.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="min-h-[44px]">Отмена</AlertDialogCancel>
+            <AlertDialogAction
+              className="min-h-[44px]"
+              onClick={async () => {
+                if (ungroupId) await ungroup(ungroupId);
+                setUngroupId(null);
+                toast.success("Группа распущена");
+              }}
+            >
+              Разгруппировать
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={delOpen} onOpenChange={setDelOpen}>
         <AlertDialogContent className="rounded-3xl">
@@ -397,19 +468,23 @@ function HoldHint() {
   );
 }
 
-/** Goal-album cell: tap opens, hold enters multi-select. */
+/** Goal-album cell: tap opens, hold enters multi-select, «···» edits. */
 function GoalCell({
   m,
   selectMode,
   selected,
   onTap,
   onHold,
+  onEdit,
+  onDelete,
 }: {
   m: MediaItem;
   selectMode: boolean;
   selected: boolean;
   onTap: () => void;
   onHold: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
 }) {
   const press = useLongPress(() => {
     markLongPress();
@@ -432,151 +507,38 @@ function GoalCell({
           onTap();
         }
       }}
-      className="cursor-pointer rounded-2xl outline-none [touch-action:pan-y] focus-visible:ring-4 focus-visible:ring-ring/30"
+      className="relative cursor-pointer rounded-2xl outline-none [touch-action:pan-y] focus-visible:ring-4 focus-visible:ring-ring/30"
     >
       <PhotoTile m={m} big selectMode={selectMode} selected={selected} />
-    </div>
-  );
-}
-
-function Viewer({ item, onClose }: { item: MediaItem | null; onClose: () => void }) {
-  return (
-    <Dialog open={!!item} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-h-[92vh] overflow-y-auto rounded-3xl">
-        {item && <ViewerBody key={item.id} item={item} onClose={onClose} />}
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function ViewerBody({ item, onClose }: { item: MediaItem; onClose: () => void }) {
-  const url = useBlobUrl(item.blob);
-  const [broken, setBroken] = useState(false);
-  const [title, setTitle] = useState(item.title);
-  const [note, setNote] = useState(item.note);
-  const [date, setDate] = useState(item.date);
-  const [clips, setClips] = useState(clipsToText(item.clips));
-  const [delOpen, setDelOpen] = useState(false);
-  const lk = item.url ? parseLink(item.url) : null;
-  const canClip = lk?.type === "youtube" || lk?.type === "video";
-  const field = "w-full rounded-2xl border-2 px-4 outline-none focus:border-primary";
-  return (
-    <>
-      <DialogTitle className="sr-only">{item.title || "Медиа"}</DialogTitle>
-      <div className="overflow-hidden rounded-2xl bg-muted">
-        {item.url ? (
-          <div className="aspect-video">
-            <LinkMedia url={item.url} clips={parseClips(clips)} controls muted={false} />
-          </div>
-        ) : !item.blob || broken ? (
-          <div className="flex aspect-video flex-col items-center justify-center gap-2 text-muted-foreground">
-            <ImagePlus className="h-10 w-10 opacity-40" />
-            <p className="text-sm font-semibold">
-              {!item.blob ? "Файл отсутствует на устройстве" : "Не удалось показать файл"}
-            </p>
-          </div>
-        ) : !url ? (
-          <div className="flex aspect-video animate-pulse items-center justify-center text-muted-foreground">
-            <ImagePlus className="h-10 w-10 opacity-40" />
-          </div>
-        ) : item.kind === "image" ? (
-          <img
-            src={url}
-            alt={item.title}
-            onError={() => setBroken(true)}
-            className="max-h-[50vh] w-full object-contain"
-          />
-        ) : (
-          <video
-            src={url}
-            controls
-            playsInline
-            onError={() => setBroken(true)}
-            className="max-h-[50vh] w-full"
-          />
-        )}
-      </div>
-      {item.url && canClip && (
-        <textarea
-          rows={2}
-          className={cn(field, "py-3")}
-          placeholder={"Таймкоды (необязательно):\n1:20-1:45"}
-          value={clips}
-          onChange={(e) => setClips(e.target.value)}
-        />
-      )}
-      <input
-        className={cn(field, "h-12")}
-        placeholder="Название (необязательно)"
-        value={title}
-        onChange={(e) => setTitle(e.target.value)}
-      />
-      <textarea
-        rows={3}
-        className={cn(field, "py-3")}
-        placeholder="Описание или заметки: вес, самочувствие, что изменилось…"
-        value={note}
-        onChange={(e) => setNote(e.target.value)}
-      />
-      <label className="text-sm font-semibold">
-        Дата
-        <input
-          type="date"
-          className={cn(field, "mt-1 h-12")}
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-        />
-      </label>
-      {item.kind === "video" && (
-        <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
-          <Play className="h-4 w-4" /> Видео
-        </span>
-      )}
-      <div className="flex gap-2">
-        <TapButton
-          className="flex-1"
-          onClick={async () => {
-            await updateMedia(item.id, {
-              title: title.trim(),
-              note: note.trim(),
-              date: date || item.date,
-              clips: item.url ? parseClips(clips) : undefined,
-            });
-            toast.success("Сохранено");
-            onClose();
-          }}
-        >
-          Сохранить
-        </TapButton>
-        <TapButton variant="soft" aria-label="Удалить" onClick={() => setDelOpen(true)}>
-          <Trash2 className="h-4 w-4" />
-        </TapButton>
-      </div>
-      <AlertDialog open={delOpen} onOpenChange={setDelOpen}>
-        <AlertDialogContent className="rounded-3xl">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Удалить фото навсегда?</AlertDialogTitle>
-            <AlertDialogDescription>
-              «{title.trim() || "Без названия"}» пропадёт с устройства без возможности
-              восстановления.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel className="min-h-[44px]">Отмена</AlertDialogCancel>
-            <AlertDialogAction
-              className="min-h-[44px] bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={async () => {
-                await removeMedia(item.id);
-                setDelOpen(false);
-                onClose();
-              }}
+      <span
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
+        className="absolute right-1.5 top-1.5"
+      >
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              aria-label="Действия с фото"
+              onClick={(e) => e.stopPropagation()}
+              className="flex h-11 w-11 items-center justify-center rounded-full bg-foreground/60 text-background"
             >
-              Удалить
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </>
+              <MoreVertical className="h-5 w-5" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="min-w-52 rounded-2xl">
+            <DropdownMenuItem className="min-h-[44px] text-[15px]" onSelect={onEdit}>
+              <Pencil className="h-4 w-4" /> Изменить
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="min-h-[44px] text-[15px] text-destructive focus:text-destructive"
+              onSelect={onDelete}
+            >
+              <Trash2 className="h-4 w-4" /> Удалить
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </span>
+    </div>
   );
 }
 

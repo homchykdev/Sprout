@@ -1,5 +1,12 @@
+import { MoreVertical, Pencil, Star, Trash2, Ungroup } from "lucide-react";
 import type { MediaItem } from "@/lib/media";
 import { consumeLongPress, markLongPress, useLongPress } from "@/hooks/use-long-press";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { maxGroupDate, toGroups, type PhotoGroup as Group } from "@/lib/photo-groups";
 import { PhotoTile } from "./PhotoTile";
 
@@ -19,10 +26,16 @@ interface TimelineProps {
   onToggle: (id: string) => void;
   onToggleGroup: (g: Group) => void;
   onOpen: (m: MediaItem) => void;
-  onOpenGroup: (groupId: string) => void;
+  onOpenGroup: (g: Group) => void;
   /** Long-press enters multi-select (no selection-mode button anymore). */
   onHoldItem: (m: MediaItem) => void;
   onHoldGroup: (g: Group) => void;
+  /** Card «···» actions. */
+  onEdit: (m: MediaItem) => void;
+  onDelete: (m: MediaItem) => void;
+  onCover: (groupId: string) => void;
+  onUngroup: (groupId: string) => void;
+  onDeleteGroup: (g: Group) => void;
 }
 
 /** Progress timeline: single photos and group cards, grouped by month. */
@@ -36,6 +49,11 @@ export function PhotoTimeline({
   onOpenGroup,
   onHoldItem,
   onHoldGroup,
+  onEdit,
+  onDelete,
+  onCover,
+  onUngroup,
+  onDeleteGroup,
 }: TimelineProps) {
   const first = items[items.length - 1]!.date;
   type Entry = { entry: MediaItem | Group; key: string };
@@ -63,8 +81,12 @@ export function PhotoTimeline({
                     selectMode={selectMode}
                     selected={selected}
                     onToggle={() => onToggleGroup(entry)}
-                    onOpen={() => onOpenGroup(entry.id)}
+                    onOpen={() => onOpenGroup(entry)}
                     onHold={() => onHoldGroup(entry)}
+                    onEdit={() => onEdit(entry.cover)}
+                    onCover={() => onCover(entry.id)}
+                    onUngroup={() => onUngroup(entry.id)}
+                    onDelete={() => onDeleteGroup(entry)}
                   />
                 ) : (
                   <EntryCard
@@ -74,6 +96,8 @@ export function PhotoTimeline({
                     selected={selected.includes(entry.id)}
                     onTap={() => (selectMode ? onToggle(entry.id) : onOpen(entry))}
                     onHold={() => onHoldItem(entry)}
+                    onEdit={() => onEdit(entry)}
+                    onDelete={() => onDelete(entry)}
                   />
                 )}
               </div>
@@ -85,6 +109,52 @@ export function PhotoTimeline({
   );
 }
 
+interface MenuAction {
+  icon: typeof Pencil;
+  label: string;
+  danger?: boolean;
+  onSelect: () => void;
+}
+
+/** «···» on the card side. Stops all gestures so the card itself never fires. */
+function CardMenu({ label, actions }: { label: string; actions: MenuAction[] }) {
+  return (
+    <span
+      data-card-menu
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+      className="shrink-0 self-center"
+    >
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            aria-label={label}
+            onClick={(e) => e.stopPropagation()}
+            className="press flex h-11 w-11 items-center justify-center rounded-full text-muted-foreground hover:bg-muted"
+          >
+            <MoreVertical className="h-5 w-5" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="min-w-52 rounded-2xl">
+          {actions.map((a) => (
+            <DropdownMenuItem
+              key={a.label}
+              onSelect={a.onSelect}
+              className={
+                a.danger
+                  ? "min-h-[44px] text-[15px] text-destructive focus:text-destructive"
+                  : "min-h-[44px] text-[15px]"
+              }
+            >
+              <a.icon className="h-4 w-4" /> {a.label}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </span>
+  );
+}
+
 function EntryCard({
   m,
   first,
@@ -92,6 +162,8 @@ function EntryCard({
   selected,
   onTap,
   onHold,
+  onEdit,
+  onDelete,
 }: {
   m: MediaItem;
   first: string;
@@ -99,17 +171,28 @@ function EntryCard({
   selected: boolean;
   onTap: () => void;
   onHold: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
 }) {
   const day = Math.round((+new Date(m.date) - +new Date(first)) / 864e5);
   const press = useLongPress(() => {
     markLongPress();
     onHold();
   });
+  const tap = () => {
+    if (consumeLongPress()) return;
+    onTap();
+  };
   return (
-    <button
-      onClick={() => {
-        if (consumeLongPress()) return;
-        onTap();
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={tap}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onTap();
+        }
       }}
       {...press}
       className="card-soft press flex w-full gap-3 p-3 text-left [touch-action:pan-y]"
@@ -125,7 +208,14 @@ function EntryCard({
         </p>
         {m.note && <p className="line-clamp-2 text-sm text-muted-foreground">{m.note}</p>}
       </div>
-    </button>
+      <CardMenu
+        label="Действия с фото"
+        actions={[
+          { icon: Pencil, label: "Изменить", onSelect: onEdit },
+          { icon: Trash2, label: "Удалить", danger: true, onSelect: onDelete },
+        ]}
+      />
+    </div>
   );
 }
 
@@ -137,6 +227,10 @@ function GroupCard({
   onToggle,
   onOpen,
   onHold,
+  onEdit,
+  onCover,
+  onUngroup,
+  onDelete,
 }: {
   g: Group;
   first: string;
@@ -145,6 +239,10 @@ function GroupCard({
   onToggle: () => void;
   onOpen: () => void;
   onHold: () => void;
+  onEdit: () => void;
+  onCover: () => void;
+  onUngroup: () => void;
+  onDelete: () => void;
 }) {
   const all = g.items.every((x) => selected.includes(x.id));
   const dates = [...new Set(g.items.map((x) => x.date))].sort();
@@ -153,12 +251,22 @@ function GroupCard({
     markLongPress();
     onHold();
   });
+  const tap = () => {
+    if (consumeLongPress()) return;
+    if (selectMode) onToggle();
+    else onOpen();
+  };
   return (
-    <button
-      onClick={() => {
-        if (consumeLongPress()) return;
-        if (selectMode) onToggle();
-        else onOpen();
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={tap}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          if (selectMode) onToggle();
+          else onOpen();
+        }
       }}
       {...press}
       className="card-soft press flex w-full gap-3 p-3 text-left [touch-action:pan-y]"
@@ -184,6 +292,15 @@ function GroupCard({
           <p className="line-clamp-2 text-sm text-muted-foreground">{g.cover.note}</p>
         )}
       </div>
-    </button>
+      <CardMenu
+        label="Действия с группой"
+        actions={[
+          { icon: Pencil, label: "Изменить", onSelect: onEdit },
+          { icon: Star, label: "Сменить превью", onSelect: onCover },
+          { icon: Ungroup, label: "Разгруппировать", onSelect: onUngroup },
+          { icon: Trash2, label: "Удалить группу", danger: true, onSelect: onDelete },
+        ]}
+      />
+    </div>
   );
 }
