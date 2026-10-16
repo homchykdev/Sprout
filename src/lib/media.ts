@@ -126,40 +126,6 @@ export function useBlobUrl(blob: Blob | undefined) {
   return url;
 }
 
-/** Photos are downscaled + re-encoded to the smallest of AVIF/WebP/JPEG (fallback chain); short videos go cloud → animated webp, else stored as-is. */
-async function shrink(file: File): Promise<Blob> {
-  if (!file.type.startsWith("image/") || file.type === "image/gif") return file;
-  try {
-    const bmp = await createImageBitmap(file);
-    const k = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
-    const c = document.createElement("canvas");
-    c.width = Math.round(bmp.width * k);
-    c.height = Math.round(bmp.height * k);
-    c.getContext("2d")!.drawImage(bmp, 0, 0, c.width, c.height);
-    const toBlob = (type: string, q: number) =>
-      new Promise<Blob | null>((r) => {
-        try {
-          c.toBlob(r, type, q);
-        } catch {
-          r(null);
-        }
-      });
-    // AVIF ≈ HEIC-level compression, royalty-free and browser-encodable.
-    // Chain: try each format, keep the first result smaller than the source.
-    for (const [type, q] of [
-      ["image/avif", 0.72],
-      ["image/webp", 0.82],
-      ["image/jpeg", 0.85],
-    ] as const) {
-      const out = await toBlob(type, q);
-      if (out && out.size < file.size) return out;
-    }
-    return file;
-  } catch {
-    return file;
-  }
-}
-
 export async function addLink(
   url: string,
   album: Album,
@@ -211,27 +177,25 @@ export async function addFiles(
   navigator.storage?.persist?.().catch(() => {});
   for (const f of files) {
     if (isHeic(f)) {
-      // iPhone HEIC: browsers can't decode it — convert client-side to JPEG first.
+      // iPhone HEIC → one fixed format: JPEG (heic2any outputs it natively,
+      // no canvas involved; decodes everywhere).
       try {
         const { default: heic2any } = await import("heic2any");
         const out = await heic2any({ blob: f, toType: "image/jpeg", quality: 0.85 });
         const pics = (Array.isArray(out) ? out : [out]).filter((b) => b.size > 0);
         if (!pics.length) throw new Error("empty");
         for (const [i, pic] of pics.entries()) {
-          const blob = await shrink(
-            new File([pic], f.name.replace(/\.hei[cf]$/i, ".jpg"), { type: "image/jpeg" }),
-          );
           const id = Math.random().toString(36).slice(2, 10) + Date.now().toString(36) + i;
           await putMedia({
             id,
             album,
             kind: "image",
-            mime: blob.type || "image/jpeg",
+            mime: "image/jpeg",
             title: "",
             note: "",
             createdAt: Date.now(),
             date: dayOf(f.lastModified || Date.now()),
-            blob,
+            blob: pic,
           });
           added.push(id);
         }
@@ -258,17 +222,20 @@ export async function addFiles(
       createdAt: Date.now(),
       date: dayOf(f.lastModified || Date.now()),
     };
+    if (kind === "image") {
+      // Already a supported format — store byte-for-byte, no processing.
+      await putMedia({ ...base, kind, mime: f.type, blob: f });
+      added.push(id);
+      continue;
+    }
     if (kind === "video") {
       if (f.size > VIDEO_MAX_BYTES) {
         tooHeavy.push(f.name);
         continue;
       }
+      // Duration check is best-effort: unreadable metadata must not hang the upload.
       const probe = await probeVideo(f).catch(() => null);
-      if (!probe) {
-        skipped.push(f.name);
-        continue;
-      }
-      if (probe.duration > VIDEO_MAX_SEC) {
+      if (probe && probe.duration > VIDEO_MAX_SEC) {
         tooHeavy.push(f.name);
         continue;
       }
@@ -287,9 +254,6 @@ export async function addFiles(
       added.push(id);
       continue;
     }
-    const blob = await shrink(f);
-    await putMedia({ ...base, kind, mime: blob.type || f.type, blob });
-    added.push(id);
   }
   return { added, converted, skipped, tooHeavy };
 }

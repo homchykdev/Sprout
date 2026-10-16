@@ -3,29 +3,37 @@ import { VIDEO_MAX_BYTES, VIDEO_MAX_SEC } from "./video-rules";
 
 export { VIDEO_MAX_BYTES, VIDEO_MAX_SEC };
 
-/** Reads duration/size without uploading (object URL is revoked after). */
+/** Reads duration/size without uploading. Never hangs: rejects after 8s. */
 export function probeVideo(
   file: Blob,
+  timeoutMs = 8000,
 ): Promise<{ duration: number; width: number; height: number }> {
   return new Promise((res, rej) => {
     const url = URL.createObjectURL(file);
     const v = document.createElement("video");
     v.preload = "metadata";
     v.muted = true;
-    const done = () => URL.revokeObjectURL(url);
-    v.onloadedmetadata = () => {
-      const out = {
-        duration: Number.isFinite(v.duration) ? v.duration : 0,
-        width: v.videoWidth,
-        height: v.videoHeight,
-      };
-      done();
-      res(out);
+    let settled = false;
+    const finish = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timer);
+      URL.revokeObjectURL(url);
+      fn();
     };
-    v.onerror = () => {
-      done();
-      rej(new Error("Не удалось прочитать видео — файл повреждён?"));
-    };
+    const timer = window.setTimeout(
+      () => finish(() => rej(new Error("Не удалось прочитать видео"))),
+      timeoutMs,
+    );
+    v.onloadedmetadata = () =>
+      finish(() =>
+        res({
+          duration: Number.isFinite(v.duration) ? v.duration : 0,
+          width: v.videoWidth,
+          height: v.videoHeight,
+        }),
+      );
+    v.onerror = () => finish(() => rej(new Error("Не удалось прочитать видео — файл повреждён?")));
     v.src = url;
   });
 }
