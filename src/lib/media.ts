@@ -126,7 +126,7 @@ export function useBlobUrl(blob: Blob | undefined) {
   return url;
 }
 
-/** Photos are downscaled + re-encoded to webp (fallback jpeg); short videos go cloud → animated webp, else stored as-is. */
+/** Photos are downscaled + re-encoded to the smallest of AVIF/WebP/JPEG (fallback chain); short videos go cloud → animated webp, else stored as-is. */
 async function shrink(file: File): Promise<Blob> {
   if (!file.type.startsWith("image/") || file.type === "image/gif") return file;
   try {
@@ -137,11 +137,24 @@ async function shrink(file: File): Promise<Blob> {
     c.height = Math.round(bmp.height * k);
     c.getContext("2d")!.drawImage(bmp, 0, 0, c.width, c.height);
     const toBlob = (type: string, q: number) =>
-      new Promise<Blob | null>((r) => c.toBlob(r, type, q));
-    const webp = await toBlob("image/webp", 0.82);
-    if (webp && webp.size < file.size) return webp;
-    const jpg = await toBlob("image/jpeg", 0.85);
-    return jpg && jpg.size < file.size ? jpg : file;
+      new Promise<Blob | null>((r) => {
+        try {
+          c.toBlob(r, type, q);
+        } catch {
+          r(null);
+        }
+      });
+    // AVIF ≈ HEIC-level compression, royalty-free and browser-encodable.
+    // Chain: try each format, keep the first result smaller than the source.
+    for (const [type, q] of [
+      ["image/avif", 0.72],
+      ["image/webp", 0.82],
+      ["image/jpeg", 0.85],
+    ] as const) {
+      const out = await toBlob(type, q);
+      if (out && out.size < file.size) return out;
+    }
+    return file;
   } catch {
     return file;
   }
