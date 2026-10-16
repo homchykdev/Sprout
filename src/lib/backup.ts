@@ -14,7 +14,11 @@ export const SECTIONS = {
     hint: "имя, напоминания, голос",
     keys: ["name", "reminders", "voice"],
   },
-  keys: { label: "Ключи", hint: "MuscleWiki, ИИ и ffmpeg", keys: ["mwKey", "ai", "ffmpegKey"] },
+  keys: {
+    label: "Ключи",
+    hint: "MuscleWiki, ИИ и ffmpeg",
+    keys: ["mwKey", "ai", "ffmpegKey", "ffmpegOptions", "ffmpegOut"],
+  },
 } as const satisfies Record<string, { label: string; hint: string; keys: (keyof AppState)[] }>;
 export type SectionId = keyof typeof SECTIONS;
 export type Strategy = "replace" | "merge";

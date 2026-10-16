@@ -53,7 +53,7 @@ const ConvertInput = z.object({
   filePath: z.string().min(1).max(200),
   /** Output name, e.g. `clip-abc.webp`. */
   outName: z.string().min(1).max(120),
-  options: z.array(z.string().max(80)).min(1).max(16),
+  options: z.array(z.string().max(200)).min(1).max(32),
 });
 
 /**

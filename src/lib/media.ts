@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { convertVideoToWebp, probeVideo, VIDEO_MAX_BYTES, VIDEO_MAX_SEC } from "./ffmpeg";
+import { convertVideo, probeVideo, VIDEO_MAX_BYTES, VIDEO_MAX_SEC } from "./ffmpeg";
 import { isHeicFile } from "./video-rules";
 
 /** User photos/videos live in IndexedDB (too large for the main store). */
@@ -149,12 +149,18 @@ export async function addLink(
 
 export interface AddResult {
   added: string[];
-  /** Short videos cloud-converted to animated webp (subset of added). */
+  /** Short videos cloud-transcoded with the user's ffmpeg options (subset of added). */
   converted: string[];
   /** Files skipped: not an image/video the browser can show (e.g. HEIC). */
   skipped: string[];
   /** Videos over the short-clip limits (30s / 50MB). */
   tooHeavy: string[];
+}
+
+export interface TranscodeOpts {
+  ffmpegKey?: string;
+  ffmpegOptions?: string[];
+  ffmpegOut?: string;
 }
 
 /** HEIC/HEIF from iPhones: browsers can't decode them — converted to JPEG on import. */
@@ -168,7 +174,7 @@ const dayOf = (t: number) => {
 export async function addFiles(
   files: File[],
   album: Album,
-  opts?: { ffmpegKey?: string },
+  opts?: TranscodeOpts,
 ): Promise<AddResult> {
   const added: string[] = [];
   const converted: string[] = [];
@@ -239,15 +245,20 @@ export async function addFiles(
         tooHeavy.push(f.name);
         continue;
       }
-      if (opts?.ffmpegKey) {
+      if (opts?.ffmpegKey && opts?.ffmpegOptions?.length) {
         try {
-          const webp = await convertVideoToWebp(f, opts.ffmpegKey);
-          await putMedia({ ...base, kind: "image", mime: "image/webp", blob: webp });
+          const out = await convertVideo(
+            f,
+            opts.ffmpegKey,
+            opts.ffmpegOptions,
+            opts.ffmpegOut ?? "webm",
+          );
+          await putMedia({ ...base, kind: out.kind, mime: out.mime, blob: out.blob });
           added.push(id);
           converted.push(id);
           continue;
         } catch {
-          // Cloud failed — store the original below.
+          // Cloud failed (incl. CPU fallback) — store the original below.
         }
       }
       await putMedia({ ...base, kind, mime: f.type, blob: f });

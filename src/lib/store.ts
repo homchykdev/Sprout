@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { SEED_EXERCISES, SEED_WORKOUTS } from "./seed";
+import { DEFAULT_FFMPEG_OPTIONS, DEFAULT_FFMPEG_OUT } from "./video-rules";
 import {
   normalizeMuscles,
   type AiSettings,
@@ -20,8 +21,12 @@ export interface AppState {
   vacations: Vacation[];
   ai: AiSettings;
   mwKey: string;
-  /** ffmpeg-api.com key for cloud video → webp conversion (own key, on-device). */
+  /** ffmpeg-api.com key for cloud video conversion (own key, on-device). */
   ffmpegKey: string;
+  /** User-tunable ffmpeg output options (argv array) for cloud video conversion. */
+  ffmpegOptions: string[];
+  /** Output container for cloud video conversion (webm/mp4/webp). */
+  ffmpegOut: string;
   reminders: { enabled: boolean; hour: number };
   lastNotified: string;
   since: string;
@@ -76,6 +81,8 @@ export const initialState: AppState = {
   },
   mwKey: "",
   ffmpegKey: "",
+  ffmpegOptions: [...DEFAULT_FFMPEG_OPTIONS],
+  ffmpegOut: "webm",
   reminders: { enabled: true, hour: 18 },
   lastNotified: "",
   since: "",
@@ -138,7 +145,7 @@ export const useApp = create<AppState & Actions>()(
     }),
     {
       name: "pulse-fit-v1",
-      version: 5,
+      version: 6,
       migrate: (persisted, from) =>
         migrateState(persisted as Partial<AppState>, from) as AppState & Actions,
     },
@@ -148,10 +155,14 @@ export const useApp = create<AppState & Actions>()(
 export const uid = () =>
   Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
 
-/** v1 -> v2: legacy muscle keys become body-map muscles; fill new fields. v2 -> v3: badges/medals seen + sound theme. v3 -> v4: single ai.apiKey becomes ai.keys array. v4 -> v5: ffmpegKey for cloud video conversion. */
+/** v1 -> v2: legacy muscle keys become body-map muscles; fill new fields. v2 -> v3: badges/medals seen + sound theme. v3 -> v4: single ai.apiKey becomes ai.keys array. v4 -> v5: ffmpegKey for cloud video conversion. v5 -> v6: tunable ffmpegOptions/ffmpegOut. */
 export function migrateState(p: Partial<AppState>, from: number): Partial<AppState> {
   const out: Partial<AppState> = { ...p };
   if (from < 5 && typeof p.ffmpegKey !== "string") out.ffmpegKey = "";
+  if (from < 6) {
+    if (!Array.isArray(p.ffmpegOptions)) out.ffmpegOptions = [...DEFAULT_FFMPEG_OPTIONS];
+    if (typeof p.ffmpegOut !== "string" || !p.ffmpegOut) out.ffmpegOut = DEFAULT_FFMPEG_OUT;
+  }
   if (from < 2) {
     if (p.exercises)
       out.exercises = p.exercises.map((e) => ({

@@ -70,6 +70,8 @@ function Gallery() {
   const [album, setAlbum] = useState<Album>("progress");
   const items = useMedia(album);
   const ffmpegKey = useApp((s) => s.ffmpegKey);
+  const ffmpegOptions = useApp((s) => s.ffmpegOptions);
+  const ffmpegOut = useApp((s) => s.ffmpegOut);
   const [light, setLight] = useState<{ items: MediaItem[]; index: number } | null>(null);
   const [editItem, setEditItem] = useState<MediaItem | null>(null);
   const [ungroupId, setUngroupId] = useState<string | null>(null);
@@ -92,18 +94,18 @@ function Gallery() {
       const { added, converted, skipped, tooHeavy } = await addFiles(
         [...fs],
         album,
-        ffmpegKey ? { ffmpegKey } : undefined,
+        ffmpegKey ? { ffmpegKey, ffmpegOptions, ffmpegOut } : undefined,
       );
       if (added.length > 1) {
         // Several angles at once = one group (front/side/back).
         await groupItems(added);
         toast.success(
           converted.length
-            ? `Группа из ${added.length} создана · видео сжато в webp ✓`
+            ? `Группа из ${added.length} создана · видео перекодировано ✓`
             : `Группа из ${added.length} фото создана`,
         );
       } else if (added.length === 1) {
-        toast.success(converted.length ? "Видео сжато в webp ✓" : "Добавлено");
+        toast.success(converted.length ? "Видео перекодировано ✓" : "Добавлено");
       }
       if (skipped.length)
         toast.error(

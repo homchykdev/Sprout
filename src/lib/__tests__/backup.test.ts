@@ -37,4 +37,10 @@ describe("sectioned backup files", () => {
     expect("ffmpegKey" in f.data).toBe(true);
     expect(countRecords("keys", { ...f.data, ffmpegKey: "x" }).count).toBeGreaterThanOrEqual(1);
   });
+  it("keys section carries tunable transcode options", () => {
+    const f = buildSingleFile("keys");
+    expect("ffmpegOptions" in f.data).toBe(true);
+    expect("ffmpegOut" in f.data).toBe(true);
+    expect(Array.isArray(f.data.ffmpegOptions)).toBe(true);
+  });
 });
