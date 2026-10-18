@@ -9,7 +9,6 @@ import { monthlyChallenge } from "@/lib/achievements";
 import { advice, muscleLoad, streak } from "@/lib/game";
 import { useApp } from "@/lib/store";
 import { cn } from "@/lib/utils";
-import { AlbumView } from "./gallery";
 
 export const Route = createFileRoute("/progress")({
   head: () => ({
@@ -32,38 +31,7 @@ export const Route = createFileRoute("/progress")({
 const MOODS = ["😞", "😐", "🙂", "😄", "🤩"] as const;
 
 function Progress() {
-  const [tab, setTab] = useState<"overview" | "photos">("overview");
-  return (
-    <div className="space-y-5">
-      <h1 className="pt-2 text-3xl font-extrabold tracking-tight">Прогресс</h1>
-      <div
-        className="flex rounded-full bg-muted p-1 text-sm font-semibold"
-        role="tablist"
-        aria-label="Разделы прогресса"
-      >
-        {(
-          [
-            ["overview", "Обзор"],
-            ["photos", "Фото"],
-          ] as const
-        ).map(([id, label]) => (
-          <button
-            key={id}
-            role="tab"
-            aria-selected={tab === id}
-            onClick={() => setTab(id)}
-            className={cn(
-              "min-h-[44px] flex-1 rounded-full transition-colors",
-              tab === id ? "bg-card shadow-sm" : "text-muted-foreground",
-            )}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-      {tab === "overview" ? <ProgressOverview /> : <AlbumView album="progress" />}
-    </div>
-  );
+  return <ProgressOverview />;
 }
 
 export function ProgressOverview() {
@@ -79,6 +47,7 @@ export function ProgressOverview() {
   return (
     <div className="space-y-5">
       <Celebrate show={party} />
+      <h1 className="pt-2 text-3xl font-extrabold tracking-tight">Прогресс</h1>
       <div className="grid grid-cols-3 gap-3">
         {[
           { v: s.sessions.length, l: "тренировок" },

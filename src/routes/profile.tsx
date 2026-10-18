@@ -3,8 +3,6 @@ import { Badges } from "@/components/game/Badges";
 import { evaluateBadges } from "@/lib/achievements";
 import { level, streak } from "@/lib/game";
 import { useApp } from "@/lib/store";
-import { AlbumView } from "./gallery";
-import { SettingsSections } from "./settings";
 
 export const Route = createFileRoute("/profile")({
   head: () => ({
@@ -12,12 +10,12 @@ export const Route = createFileRoute("/profile")({
       { title: "Профиль · Пульс" },
       {
         name: "description",
-        content: "Твои данные, достижения, цели фигуры и настройки.",
+        content: "Твои данные и достижения.",
       },
       { property: "og:title", content: "Профиль · Пульс" },
       {
         property: "og:description",
-        content: "Достижения, цели фигуры и настройки.",
+        content: "Уровень, серия и достижения.",
       },
     ],
   }),
@@ -51,12 +49,6 @@ function Profile() {
       </section>
 
       <Badges states={badges} />
-
-      <section className="space-y-3">
-        <AlbumView album="goal" title="Цели фигуры" />
-      </section>
-
-      <SettingsSections />
     </div>
   );
 }
