@@ -9,8 +9,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { evaluateBadges } from "@/lib/achievements";
-import { level, streak } from "@/lib/game";
+import { level } from "@/lib/game";
 import { clearAvatarPhoto, setAvatarPhoto, useAvatarPhoto, useBlobUrl } from "@/lib/media";
+import { planProgress } from "@/lib/plan";
 import { useApp } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
@@ -32,7 +33,7 @@ const CAP =
 function Profile() {
   const s = useApp();
   const lv = level(s.xp);
-  const st = streak(s);
+  const st = planProgress(s).streak;
   const totalMin = Math.round(s.sessions.reduce((a, x) => a + x.durationSec, 0) / 60);
   const badges = evaluateBadges(s, new Date());
   const sinceText = s.since

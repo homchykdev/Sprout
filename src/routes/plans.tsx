@@ -1,11 +1,29 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { ArrowDown, ArrowUp, Pencil, Play, Plus, Sparkles, Trash2, X } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  BedDouble,
+  ChevronRight,
+  Flame,
+  Pencil,
+  Play,
+  Plus,
+  Sparkles,
+  Trash2,
+  X,
+} from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { TapButton } from "@/components/game/TapButton";
 import { aiCreateWorkout } from "@/lib/clients";
-import { nextWorkout, WEEKDAYS } from "@/lib/game";
+import {
+  DEFAULT_PLAN_SETTINGS,
+  forecast,
+  nextWorkout,
+  planProgress,
+} from "@/lib/plan";
 import { useApp, uid } from "@/lib/store";
 import type { Workout } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -15,20 +33,20 @@ import { LibraryContent } from "./library";
 export const Route = createFileRoute("/plans")({
   head: () => ({
     meta: [
-      { title: "Тренировки и расписание · Пульс" },
+      { title: "Тренировки · Пульс" },
       {
         name: "description",
-        content: "Составляй тренировки, план и гибкое расписание по дням недели.",
+        content: "Составляй тренировки, строй цикл плана и настраивай защиту серии.",
       },
-      { property: "og:title", content: "Тренировки и расписание · Пульс" },
-      { property: "og:description", content: "Персональные тренировки и гибкое расписание." },
+      { property: "og:title", content: "Тренировки · Пульс" },
+      { property: "og:description", content: "План-цикл, тренировки и упражнения." },
     ],
   }),
   component: Plans,
 });
 
 function Plans() {
-  const [tab, setTab] = useState<"workouts" | "exercises">("workouts");
+  const [tab, setTab] = useState<"plan" | "workouts" | "exercises">("plan");
   return (
     <div className="space-y-5">
       <h1 className="pt-2 text-3xl font-extrabold tracking-tight">Тренировки</h1>
@@ -39,6 +57,7 @@ function Plans() {
       >
         {(
           [
+            ["plan", "План"],
             ["workouts", "Мои тренировки"],
             ["exercises", "Упражнения"],
           ] as const
@@ -57,112 +76,328 @@ function Plans() {
           </button>
         ))}
       </div>
-      {tab === "workouts" ? <PlansContent /> : <LibraryContent />}
+      {tab === "plan" ? <PlanContent /> : <PlansContent hidden={tab === "exercises"} />}
     </div>
   );
 }
 
-export function PlansContent() {
+/** Ресурсный блок: доп-выходные и заморозки серии. */
+function ProtectionBar() {
+  const s = useApp();
+  const p = planProgress(s);
+  const { bonusMax, freezeMax } = s.plan.settings;
+  return (
+    <div className="card-soft grid grid-cols-3 gap-3 p-4 text-center">
+      <div>
+        <p className="text-2xl font-extrabold tabular">🔥 {p.streak}</p>
+        <p className="text-xs font-semibold text-muted-foreground">дней серии</p>
+      </div>
+      <div>
+        <p className="text-2xl font-extrabold tabular">
+          🛏️ {p.bonusLeft}/{bonusMax}
+        </p>
+        <p className="text-xs font-semibold text-muted-foreground">доп-выходные</p>
+      </div>
+      <div>
+        <p className="text-2xl font-extrabold tabular">
+          ❄️ {p.freezeLeft}/{freezeMax}
+        </p>
+        <p className="text-xs font-semibold text-muted-foreground">заморозки</p>
+      </div>
+    </div>
+  );
+}
+
+/** Настройки x/n/y/порог — то, что позже зашьётся в приложение. */
+function PlanSettingsBox() {
+  const s = useApp();
+  const st = s.plan.settings;
+  const upd = (patch: Partial<typeof st>) =>
+    s.set({ plan: { ...s.plan, settings: { ...st, ...patch } } });
+  const rows: { key: keyof typeof st; label: string; hint: string; min: number; max: number }[] = [
+    {
+      key: "bonusMax",
+      label: "Максимум доп-выходных (x)",
+      hint: "Сколько может лежать про запас.",
+      min: 0,
+      max: 20,
+    },
+    {
+      key: "bonusRestoreDays",
+      label: "Восстановление доп-выходного (n)",
+      hint: "Через сколько дней трата возвращается.",
+      min: 1,
+      max: 30,
+    },
+    {
+      key: "freezeMax",
+      label: "Максимум заморозок (y)",
+      hint: "Добываются за неделю ≥ порога.",
+      min: 0,
+      max: 20,
+    },
+    {
+      key: "freezeThresholdPct",
+      label: "Порог недели, %",
+      hint: "Квесты или тренировки ≥ — получишь заморозку.",
+      min: 0,
+      max: 100,
+    },
+  ];
+  return (
+    <section className="card-soft space-y-3 p-5">
+      <h2 className="font-bold">Защита серии</h2>
+      {rows.map(({ key, label, hint, min, max }) => (
+        <label key={key} className="flex items-center gap-3">
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-semibold">{label}</span>
+            <span className="block text-xs text-muted-foreground">{hint}</span>
+          </span>
+          <Input
+            type="number"
+            className="w-20 rounded-xl border-2 text-center tabular"
+            min={min}
+            max={max}
+            value={st[key]}
+            onChange={(e) => {
+              const v = Math.min(max, Math.max(min, Number(e.target.value) || 0));
+              upd({ [key]: v });
+            }}
+          />
+        </label>
+      ))}
+      <p className="text-xs text-muted-foreground">
+        Пропущенный 1-й и 2-й день тратят доп-выходной, с 3-го — заморозки. Отдых и отпуск — безопасны.
+      </p>
+    </section>
+  );
+}
+
+function PlanContent() {
+  const s = useApp();
+  const prog = planProgress(s);
+  const nx = nextWorkout(s);
+  const fc = forecast(s, 30);
+  return (
+    <div className="space-y-5">
+      <ProtectionBar />
+
+      <section className="card-soft p-5">
+        <h2 className="font-bold">Цикл плана</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Повторяется от даты старта. Выстроенная последовательность — твой месяц и далее.
+        </p>
+        <div className="mt-4 space-y-2">
+          {s.plan.steps.map((step, i) => {
+            const w = s.workouts.find((x) => x.id === step.workoutId);
+            return (
+              <div
+                key={step.id}
+                className={cn(
+                  "flex items-center gap-2 rounded-2xl border-2 p-2.5",
+                  step.kind === "workout" ? "border-primary/30 bg-card" : "bg-muted/60",
+                )}
+              >
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary-soft text-lg">
+                  {step.kind === "workout" ? (w?.emoji ?? "❓") : <BedDouble className="h-5 w-5" />}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-semibold">
+                    {step.kind === "workout" ? (w?.name ?? "Нет тренировки") : "День отдыха"}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {w && step.kind === "workout"
+                      ? `${w.items.length} упр. · ~${estimateMinutes(w, s.exercises)} мин`
+                      : "Восстановление"}
+                  </p>
+                </div>
+                <TapButton
+                  size="icon"
+                  variant="ghost"
+                  disabled={i === 0}
+                  aria-label="Выше"
+                  onClick={() => s.movePlanStep(step.id, -1)}
+                >
+                  <ArrowUp className="h-4 w-4" />
+                </TapButton>
+                <TapButton
+                  size="icon"
+                  variant="ghost"
+                  disabled={i === s.plan.steps.length - 1}
+                  aria-label="Ниже"
+                  onClick={() => s.movePlanStep(step.id, 1)}
+                >
+                  <ArrowDown className="h-4 w-4" />
+                </TapButton>
+                <TapButton
+                  size="icon"
+                  variant="ghost"
+                  aria-label="Удалить"
+                  onClick={() => s.removePlanStep(step.id)}
+                >
+                  <X className="h-4 w-4" />
+                </TapButton>
+                <span className="press flex h-6 w-6 items-center justify-center rounded-lg bg-muted text-xs font-bold">
+                  {i + 1}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+        <div className="mt-3 flex gap-2">
+          <PlanStepAdder />
+        </div>
+      </section>
+      <section className="card-soft p-5">
+        <h2 className="font-bold">Прогноз на {fc.length} дней</h2>
+        <div className="mt-3 grid grid-cols-10 gap-1.5">
+          {fc.map((info) => {
+            const w = s.workouts.find((x) => x.id === info.step?.workoutId);
+            return (
+              <span
+                key={info.date.getTime()}
+                title={info.date.toLocaleDateString("ru", { day: "numeric", month: "short" })}
+                className={cn(
+                  "flex aspect-square items-center justify-center rounded-xl text-[10px] font-bold",
+                  info.status === "done" && "bg-flame text-primary-foreground",
+                  info.status === "pending" && "border-2 border-dashed border-flame",
+                  info.status === "future" && "bg-primary-soft text-primary-shade",
+                  info.status === "rest" && "bg-muted text-muted-foreground",
+                  info.status === "vacation" && "bg-sky-soft text-sky-shade",
+                  (info.status === "off" || info.status === "missed" || info.status === "protected") &&
+                    "bg-muted text-muted-foreground",
+                )}
+              >
+                {w ? w.emoji : info.status === "rest" ? "🛏️" : info.date.getDate()}
+              </span>
+            );
+          })}
+        </div>
+      </section>
+
+      <p className="text-sm font-medium">
+        {nx ? (
+          <>
+            Следующий шаг: {(nx.workout?.name ?? "нет тренировки")} —{" "}
+            {nx.date.toLocaleDateString("ru", { day: "numeric", month: "short" })}
+          </>
+        ) : (
+          "План пуст — добавь шаги цикла."
+        )}
+      </p>
+      <PlanSettingsBox />
+      <p className="-mt-2 text-xs text-muted-foreground">
+        Старт цикла: {new Date(s.plan.origin + "T12:00").toLocaleDateString("ru")}. Заморозки
+        возвращает итог недели ≥ {s.plan.settings.freezeThresholdPct}% (квесты или план). Серия
+        сейчас: {prog.streak} {prog.breakAt ? `(сломана ${prog.breakAt})` : ""}
+      </p>
+    </div>
+  );
+}
+
+/** Add a rest day or a workout-based step right after the recipe. */
+function PlanStepAdder() {
+  const s = useApp();
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <div className="flex w-full gap-2">
+        <TapButton
+          variant="soft"
+          className="flex-1"
+          onClick={() =>
+            s.addPlanStep(
+              s.plan.steps.length - 1,
+              { id: `step-${uid()}`, kind: "rest" },
+            )
+          }
+        >
+          <BedDouble className="h-4 w-4" /> День отдыха
+        </TapButton>
+        <TapButton variant="primary" className="flex-1" onClick={() => setOpen(true)}>
+          <Flame className="h-4 w-4" /> Тренировка
+        </TapButton>
+      </div>
+      <Dialog open={open} onOpenChange={(o) => !o && setOpen(false)}>
+        <DialogContent className="rounded-3xl">
+          <DialogHeader>
+            <DialogTitle>Какая тренировка пойдёт в план?</DialogTitle>
+          </DialogHeader>
+          <div className="max-h-72 space-y-1.5 overflow-y-auto">
+            {s.workouts.map((wk) => (
+              <button
+                key={wk.id}
+                aria-label={`Добавить ${wk.name}`}
+                className="flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left hover:bg-muted"
+                onClick={() => {
+                  s.addPlanStep(s.plan.steps.length - 1, {
+                    id: `step-${uid()}`,
+                    kind: "workout",
+                    workoutId: wk.id,
+                  });
+                  setOpen(false);
+                }}
+              >
+                <span className="text-xl">{wk.emoji}</span>
+                <span className="min-w-0 flex-1 truncate font-semibold">{wk.name}</span>
+                <ChevronRight className="text-muted-foreground" />
+              </button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+function PlansContent({ hidden }: { hidden: boolean }) {
   const s = useApp();
   const nav = useNavigate();
   const [edit, setEdit] = useState<Workout | null>(null);
   const [aiOpen, setAiOpen] = useState(false);
-  const next = nextWorkout(s);
-  const toggleDay = (d: number) =>
-    s.set({
-      schedule: {
-        ...s.schedule,
-        days: s.schedule.days.includes(d)
-          ? s.schedule.days.filter((x) => x !== d)
-          : [...s.schedule.days, d].sort(),
-      },
-    });
-  const toggleRot = (id: string) =>
-    s.set({
-      schedule: {
-        ...s.schedule,
-        rotation: s.schedule.rotation.includes(id)
-          ? s.schedule.rotation.filter((x) => x !== id)
-          : [...s.schedule.rotation, id],
-      },
-    });
+  const nx = nextWorkout(s);
+  const planHits = new Map<string, number[]>();
+  for (let i = 0; i < s.plan.steps.length; i++) {
+    const st = s.plan.steps[i]!;
+    if (st.kind === "workout")
+      planHits.set(st.workoutId ?? "none", [...(planHits.get(st.workoutId ?? "none") ?? []), i + 1]);
+  }
 
   return (
-    <div className="space-y-5">
-      <section className="card-soft p-5">
-        <h2 className="font-bold">Дни тренировок</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Пропущенный день переносится на следующий в пределах недели.
-        </p>
-        <div className="mt-4 grid grid-cols-7 gap-1.5">
-          {WEEKDAYS.map((d, i) => (
-            <button
-              key={d}
-              onClick={() => toggleDay(i)}
-              className={cn(
-                "press h-11 rounded-2xl text-sm font-bold transition-colors",
-                s.schedule.days.includes(i)
-                  ? "bg-primary text-primary-foreground shadow-[0_3px_0_var(--primary-shade)]"
-                  : "bg-muted text-muted-foreground",
-              )}
-            >
-              {d}
-            </button>
-          ))}
-        </div>
-        <p className="mt-3 text-sm font-medium">{s.schedule.days.length} тренировок в неделю</p>
-      </section>
-
+    <div className={cn(hidden && "hidden")}>
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-bold">Мои тренировки</h2>
         <div className="flex gap-2">
           <TapButton
             size="sm"
             variant="flame"
-            onClick={() =>
-              s.ai.keys.length
-                ? setAiOpen(true)
-                : toast("Добавьте ИИ-ключ в Профиле")
-            }
+            onClick={() => (s.ai.keys.length ? setAiOpen(true) : toast("Добавьте ИИ-ключ в Профиле"))}
           >
             <Sparkles className="h-4 w-4" /> ИИ
           </TapButton>
-          <TapButton
-            size="sm"
-            onClick={() => setEdit({ id: `w-${uid()}`, name: "", emoji: "💪", items: [] })}
-          >
+          <TapButton size="sm" onClick={() => setEdit({ id: `w-${uid()}`, name: "", emoji: "💪", items: [] })}>
             <Plus className="h-4 w-4" /> Новая
           </TapButton>
         </div>
       </div>
       <p className="-mt-3 text-sm text-muted-foreground">
-        Отмеченные тренировки чередуются по кругу — это твой план.
+        Тренировку можно использовать в цикле плана — шаги выбирают её сами.
       </p>
 
       <div className="space-y-2.5">
         {s.workouts.map((w) => {
-          const inRot = s.schedule.rotation.includes(w.id);
+          const hits = planHits.get(w.id) ?? [];
           return (
             <div
               key={w.id}
-              className={cn("card-soft p-4", next?.id === w.id && "ring-2 ring-primary")}
+              className={cn("card-soft p-4", nx?.workout?.id === w.id && "ring-2 ring-primary")}
             >
               <div className="flex items-center gap-3">
-                <button
-                  onClick={() => toggleRot(w.id)}
-                  aria-label="В плане"
-                  className={cn(
-                    "press flex h-6 w-6 items-center justify-center rounded-lg border-2 text-xs font-bold",
-                    inRot && "border-primary bg-primary text-primary-foreground",
-                  )}
-                >
-                  {inRot ? s.schedule.rotation.indexOf(w.id) + 1 : ""}
-                </button>
                 <span className="text-2xl">{w.emoji}</span>
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-semibold">
                     {w.name}
-                    {next?.id === w.id && (
+                    {nx?.workout?.id === w.id && (
                       <span className="ml-2 rounded-full bg-primary-soft px-2 py-0.5 text-[11px] font-bold text-primary-shade">
                         СЛЕДУЮЩАЯ
                       </span>
@@ -187,6 +422,11 @@ export function PlansContent() {
                   <Play className="h-4 w-4 fill-current" />
                 </TapButton>
               </div>
+              {hits.length > 0 && (
+                <p className="mt-2 rounded-xl bg-muted px-3 py-1.5 text-xs font-semibold text-muted-foreground">
+                  В плане: {hits.map((i) => `№${i}`).join(", ")}
+                </p>
+              )}
             </div>
           );
         })}
@@ -218,8 +458,7 @@ function WorkoutEditor({ value, onClose }: { value: Workout | null; onClose: () 
     [x[i], x[i + d]] = [x[i + d]!, x[i]!];
     setItems(x);
   };
-  const num =
-    "w-14 rounded-xl border-2 bg-card px-2 py-1 text-center text-sm tabular outline-none focus:border-primary";
+  const num = "w-14 rounded-xl border-2 bg-card px-2 py-1 text-center text-sm tabular outline-none focus:border-primary";
 
   return (
     <Dialog open={!!value} onOpenChange={(o) => !o && onClose()}>
@@ -278,9 +517,7 @@ function WorkoutEditor({ value, onClose }: { value: Workout | null; onClose: () 
                       className={num}
                       value={it.sets}
                       onChange={(e) =>
-                        setItems(
-                          items.map((x, j) => (j === i ? { ...x, sets: +e.target.value } : x)),
-                        )
+                        setItems(items.map((x, j) => (j === i ? { ...x, sets: +e.target.value } : x)))
                       }
                     />
                   </label>

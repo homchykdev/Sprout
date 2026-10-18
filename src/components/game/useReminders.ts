@@ -1,5 +1,6 @@
 import { useEffect } from "react";
-import { dayKey, NAGS, weekStatus } from "@/lib/game";
+import { dayKey, NAGS } from "@/lib/game";
+import { dueToday, planProgress } from "@/lib/plan";
 import { useApp } from "@/lib/store";
 
 export async function notify(title: string, body: string) {
@@ -21,14 +22,15 @@ export function useReminders() {
     const tick = () => {
       const s = useApp.getState();
       const now = new Date();
-      const st = weekStatus(s, now);
-      document.title = st.dueToday ? "🔥 Тренировка ждёт · Пульс" : "Пульс — тренировки";
-      if (!s.reminders.enabled || !st.dueToday) return;
+      const st = planProgress(s, now);
+      const atRisk = !!st.breakAt || !!dueToday(s, now);
+      document.title = dueToday(s, now) ? "🔥 Тренировка ждёт · Пульс" : "Пульс — тренировки";
+      if (!s.reminders.enabled || !dueToday(s, now)) return;
       const [d, n] = s.lastNotified.split("#");
       const count = d === dayKey(now) ? Number(n) || 0 : 0;
       const slot = s.reminders.hour + count * 2;
       if (count >= 3 || now.getHours() < slot) return;
-      notify(st.atRisk ? "Серия под угрозой! 🔥" : "Огонёк ждёт тебя", NAGS[Math.min(count + (st.atRisk ? 2 : 0), NAGS.length - 1)] ?? "").then((ok) => {
+      notify(atRisk ? "Серия под угрозой! 🔥" : "Огонёк ждёт тебя", NAGS[Math.min(count + (atRisk ? 2 : 0), NAGS.length - 1)] ?? "").then((ok) => {
         if (ok) useApp.getState().set({ lastNotified: `${dayKey(now)}#${count + 1}` });
       });
     };

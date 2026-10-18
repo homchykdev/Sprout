@@ -1,12 +1,13 @@
 import { initialState, migrateState, useApp, type AppState } from "./store";
+import type { Plan } from "./types";
 
 export const SECTIONS = {
   progress: { label: "Прогресс", hint: "история, опыт, серия", keys: ["sessions", "xp", "since"] },
   library: { label: "Библиотека упражнений", hint: "все упражнения", keys: ["exercises"] },
   workouts: {
-    label: "Тренировки и расписание",
-    hint: "тренировки, дни, план",
-    keys: ["workouts", "schedule"],
+    label: "Тренировки и план",
+    hint: "тренировки, цикл плана",
+    keys: ["workouts", "plan"],
   },
   vacations: { label: "Отпуска", hint: "периоды отпуска", keys: ["vacations"] },
   prefs: {
@@ -73,8 +74,8 @@ export function countRecords(
       return { count: data.sessions?.length ?? 0, label: "тренировок в истории" };
     case "workouts": {
       const w = data.workouts?.length ?? 0;
-      const d = data.schedule?.days.length ?? 0;
-      return { count: w, label: `тренировок · дней в плане: ${d}` };
+      const steps = data.plan?.steps.length ?? 0;
+      return { count: w, label: `тренировок · шагов в плане: ${steps}` };
     }
     case "vacations":
       return { count: data.vacations?.length ?? 0, label: "отпусков" };
@@ -187,15 +188,9 @@ export function applyBackup(
     } else if (id === "library") patch.exercises = byId(s.exercises, p.exercises);
     else if (id === "workouts") {
       patch.workouts = byId(s.workouts, p.workouts);
-      const rot = [
-        ...s.schedule.rotation,
-        ...(p.schedule?.rotation ?? []).filter((r) => !s.schedule.rotation.includes(r)),
-      ];
-      patch.schedule = {
-        ...s.schedule,
-        days: Array.from(new Set([...s.schedule.days, ...(p.schedule?.days ?? [])])).sort(),
-        rotation: rot,
-      };
+      // Keep the current plan unless there is none yet.
+      const hasSteps = (pl?: Plan) => !!pl && pl.steps.length > 0;
+      patch.plan = hasSteps(s.plan) ? s.plan : (p.plan as Plan | undefined) ?? initialState.plan;
     } else if (id === "vacations") {
       const key = (v: { start: string; end: string }) => v.start + v.end;
       const have = new Set(s.vacations.map(key));

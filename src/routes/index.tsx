@@ -7,18 +7,8 @@ import { useCelebrate } from "@/components/game/useCelebrate";
 import { DailyQuests } from "@/components/game/DailyQuests";
 import { MonthlyChallenge } from "@/components/game/MonthlyChallenge";
 import { dailyQuests, monthlyChallenge } from "@/lib/achievements";
-import {
-  activeVacation,
-  addDays,
-  dayKey,
-  level,
-  nextWorkout,
-  startOfWeek,
-  streak,
-  weekday,
-  WEEKDAYS,
-  weekStatus,
-} from "@/lib/game";
+import { activeVacation, level, WEEKDAYS, weekday, addDays, dayKey } from "@/lib/game";
+import { dayInfo, forecast, nextWorkout, planProgress, type PlanStatus } from "@/lib/plan";
 import { useApp } from "@/lib/store";
 import { estimateMinutes } from "@/lib/workout-utils";
 import { cn } from "@/lib/utils";
@@ -38,49 +28,64 @@ export const Route = createFileRoute("/")({
   component: Today,
 });
 
+const WEEK_STRIP: Record<PlanStatus, string> = {
+  done: "bg-flame text-primary-foreground",
+  pending: "border-2 border-dashed border-flame/60 text-flame-shade",
+  protected: "bg-primary-soft text-primary-shade",
+  missed: "bg-muted text-muted-foreground",
+  rest: "bg-muted text-muted-foreground",
+  off: "bg-muted text-muted-foreground",
+  vacation: "bg-sky-soft text-sky-shade",
+  future: "border-2 border-dashed border-primary/40 text-primary-shade",
+};
+
 function Today() {
   const s = useApp();
   const nav = useNavigate();
   const now = new Date();
-  const st = weekStatus(s, now);
+  const prog = planProgress(s, now);
   const vac = activeVacation(s.vacations, now);
-  const w = nextWorkout(s);
+  const today = dayInfo(s, now, now);
+  const nx = nextWorkout(s, now);
   const lv = level(s.xp);
   const hoursLeft = 24 - now.getHours();
+  const unprotected = prog.bonusLeft <= 0 && prog.freezeLeft <= 0;
 
   let mood: Mood = "happy";
   let line = "Готов стать сильнее?";
   if (vac) {
     mood = "sleep";
     line = `Отпуск до ${new Date(vac.end).toLocaleDateString("ru", { day: "numeric", month: "long" })}. Отдыхай — серия заморожена.`;
-  } else if (st.doneToday) {
+  } else if (today.status === "done") {
     mood = "cheer";
     line = "Сегодня ты уже победил. Горжусь!";
-  } else if (st.atRisk) {
+  } else if (today.status === "pending" && prog.streak === 0) {
     mood = "sad";
-    line = `Серия под угрозой! Осталось ${st.left} трен. и ${st.remainingDays} дн. на неделе.`;
-  } else if (st.dueToday && st.carried) {
+    line = "Серия была сломана… Новый день — новый шанс. Начни сегодня.";
+  } else if (today.status === "missed" && !unprotected) {
     mood = "sad";
-    line = "Ты пропустил тренировку. Я перенёс её на сегодня — не подведи 🥺";
-  } else if (st.dueToday) {
+    line = "Вчера потеряли день, но серия цела. Сегодня точно тренируемся?";
+  } else if (today.status === "pending") {
     mood = "fire";
     line = `Сегодня день тренировки! Осталось ~${hoursLeft} ч.`;
-  } else if (st.left === 0) {
+  } else {
     mood = "cheer";
-    line = "План недели выполнен! Можно отдохнуть или сделать бонус.";
-  } else line = "Сегодня день отдыха. Но бонусная тренировка даст +50% XP!";
+    line = "Сегодня день отдыха. Но бонусная тренировка даст +50% XP!";
+  }
 
-  const ws = startOfWeek(now);
-  const doneDays = new Set(st.weekSessions.map((x) => dayKey(new Date(x.date))));
+  const week = forecast(s, 7, now);
+  const doneWeek = week.filter((x) => x.status === "done").length;
+  const planWeek = week.filter((x) => x.step?.kind === "workout").length;
   const quests = dailyQuests(s.sessions, now);
   const challenge = monthlyChallenge(s.sessions, now);
   const party = useCelebrate();
+  const w = nx?.workout;
 
   return (
     <div className="space-y-5">
       <Celebrate show={party} />
       <section className="flex items-end gap-3 pt-2">
-        <Mascot mood={mood} size={96} power={Math.min(1, streak(s) / 30)} />
+        <Mascot mood={mood} size={96} power={Math.min(1, prog.streak / 30)} />
         <div className="animate-pop relative mb-6 flex-1 rounded-3xl border-2 bg-card px-4 py-3 text-[15px] font-medium leading-snug">
           {s.name ? <span className="font-bold">{s.name}, </span> : null}
           {line}
@@ -107,14 +112,14 @@ function Today() {
         <section
           className={cn(
             "card-soft overflow-hidden",
-            st.atRisk && !st.doneToday && "ring-2 ring-flame",
+            today.status === "pending" && unprotected && "ring-2 ring-flame",
           )}
         >
           <div className="p-5">
             <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-              {st.doneToday
+              {today.status === "done"
                 ? "Следующая тренировка"
-                : st.dueToday
+                : today.status === "pending"
                   ? "Тренировка на сегодня"
                   : "Бонусная тренировка"}
             </p>
@@ -130,9 +135,9 @@ function Today() {
               </div>
             </div>
             <TapButton
-              variant={st.atRisk || st.carried ? "flame" : "primary"}
+              variant={today.status === "pending" && unprotected ? "flame" : "primary"}
               size="lg"
-              className={cn("mt-5 w-full", st.dueToday && "animate-pulse-ring")}
+              className={cn("mt-5 w-full", today.status === "pending" && "animate-pulse-ring")}
               onClick={() => nav({ to: "/play/$workoutId", params: { workoutId: w.id } })}
             >
               <Play className="h-5 w-5 fill-current" /> Начать
@@ -152,44 +157,49 @@ function Today() {
         <div className="flex items-baseline justify-between">
           <h2 className="font-bold">Эта неделя</h2>
           <span className="text-sm font-semibold text-muted-foreground tabular">
-            {st.done} / {Math.max(st.target, st.done)}
+            {doneWeek} / {Math.max(planWeek, doneWeek)}
           </span>
         </div>
         <div className="mt-4 grid grid-cols-7 gap-1.5">
-          {WEEKDAYS.map((d, i) => {
-            const date = addDays(ws, i);
-            const done = doneDays.has(dayKey(date));
-            const planned = s.schedule.days.includes(i);
-            const today = i === weekday(now);
+          {week.map((info, i) => {
+            const d = info.date;
+            const todayFlag = i === weekday(now) && dayKey(d) === dayKey(now);
             return (
-              <div key={d} className="flex flex-col items-center gap-1.5">
+              <div key={d.getTime()} className="flex flex-col items-center gap-1.5">
                 <span
                   className={cn(
                     "text-[11px] font-semibold",
-                    today ? "text-foreground" : "text-muted-foreground",
+                    todayFlag ? "text-foreground" : "text-muted-foreground",
                   )}
                 >
-                  {d}
+                  {WEEKDAYS[i]}
                 </span>
                 <span
+                  title={
+                    info.step?.kind === "workout"
+                      ? (s.workouts.find((x) => x.id === info.step?.workoutId)?.name ?? "")
+                      : "День отдыха"
+                  }
                   className={cn(
                     "flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold transition-all",
-                    done
-                      ? "bg-flame text-primary-foreground"
-                      : planned
-                        ? "border-2 border-dashed border-flame/60 text-flame-shade"
-                        : "bg-muted text-muted-foreground",
-                    today && !done && "ring-2 ring-foreground ring-offset-2 ring-offset-card",
+                    WEEK_STRIP[info.status],
+                    todayFlag && "ring-2 ring-foreground ring-offset-2 ring-offset-card",
                   )}
                 >
-                  {done ? <Check className="h-5 w-5" strokeWidth={3} /> : date.getDate()}
+                  {info.status === "done" ? (
+                    <Check className="h-5 w-5" strokeWidth={3} />
+                  ) : info.status === "vacation" ? (
+                    <Palmtree className="h-4 w-4" />
+                  ) : (
+                    (d.getDate() ?? "")
+                  )}
                 </span>
               </div>
             );
           })}
         </div>
         <p className="mt-4 text-xs text-muted-foreground">
-          Пропустил день — тренировка сама перенесётся на следующий день этой недели.
+          Пропущенный день тратит доп-выходной, затем — заморозки серии. Остаток видно во вкладке «План».
         </p>
       </section>
 

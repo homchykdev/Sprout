@@ -1,7 +1,8 @@
 import { Link, useLocation } from "@tanstack/react-router";
 import { Camera, Home, LayoutList, Settings, User } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
-import { level, streak } from "@/lib/game";
+import { level } from "@/lib/game";
+import { planProgress } from "@/lib/plan";
 import { useApp } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { Mascot } from "./Mascot";
@@ -40,7 +41,7 @@ function Chrome({ children, pathname }: { children: ReactNode; pathname: string 
   useReminders();
   useEffect(() => { if (!useApp.getState().since) useApp.getState().set({ since: new Date().toISOString().slice(0, 10) }); }, []);
   const s = useApp();
-  const st = streak(s);
+  const st = planProgress(s).streak;
   const lv = level(s.xp);
   return (
     <div className="mx-auto min-h-screen max-w-xl">

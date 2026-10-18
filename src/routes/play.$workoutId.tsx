@@ -12,7 +12,8 @@ import { useBlobUrl } from "@/lib/media";
 import { parseLink } from "@/lib/embed";
 import { TapButton } from "@/components/game/TapButton";
 import { signedVideo } from "@/lib/clients";
-import { MOTIVATION, streak, weekStatus } from "@/lib/game";
+import { MOTIVATION } from "@/lib/game";
+import { dueToday, planProgress } from "@/lib/plan";
 import { useApp, uid } from "@/lib/store";
 import type { Exercise, SessionLog, WorkoutItem } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -127,7 +128,7 @@ function Player() {
 
   function finish() {
     const st = useApp.getState();
-    const bonus = !weekStatus(st).dueToday;
+    const bonus = !dueToday(st);
     const sets = steps.map((x) => ({
       exerciseId: x.ex.id,
       muscles: x.ex.muscles,
@@ -146,9 +147,9 @@ function Player() {
     };
     fanfare("workout");
     speak("Тренировка завершена! Отличная работа!", { interrupt: true });
-    const before = streak(st);
+    const before = planProgress(st).streak;
     st.logSession(log);
-    setResult({ log, streakBefore: before, streakAfter: streak(useApp.getState()) });
+    setResult({ log, streakBefore: before, streakAfter: planProgress(useApp.getState()).streak });
     setPhase("done");
   }
 
