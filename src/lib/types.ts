@@ -90,6 +90,32 @@ export interface Vacation {
   end: string;
 }
 
+/** Tunable plan guards (x / n / y / threshold). */
+export interface PlanSettings {
+  /** x — bonus rest days a user can hold at once. */
+  bonusMax: number;
+  /** n — a spent bonus day returns this many days later. */
+  bonusRestoreDays: number;
+  /** y — streak freezes a user can hold at once. */
+  freezeMax: number;
+  /** Weekly settlement: freeze earned when the best of quest/workout rate >= this. */
+  freezeThresholdPct: number;
+}
+
+/** One slot of the repeating plan cycle: a workout day or a rest day. */
+export interface PlanStep {
+  id: string;
+  kind: "workout" | "rest";
+  workoutId?: string | undefined;
+}
+
+/** Repeating plan cycle; step 0 falls on `origin`. */
+export interface Plan {
+  steps: PlanStep[];
+  origin: string; // yyyy-MM-dd
+  settings: PlanSettings;
+}
+
 const LEGACY: Record<string, MuscleKey[]> = {
   shoulders: ["front-deltoids", "back-deltoids"],
   forearms: ["forearm"],

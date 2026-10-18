@@ -4,11 +4,6 @@ import { MUSCLES, type MuscleKey, type SessionLog, type Vacation, type Workout }
 export const dayKey = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 export const weekday = (d: Date) => (d.getDay() + 6) % 7; // 0 = Monday
-export const startOfWeek = (d: Date) => {
-  const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  x.setDate(x.getDate() - weekday(x));
-  return x;
-};
 export const addDays = (d: Date, n: number) => {
   const x = new Date(d);
   x.setDate(x.getDate() + n);
@@ -25,60 +20,10 @@ export const activeVacation = (vacations: Vacation[], now = new Date()) => {
   return vacations.find((v) => k >= v.start && k <= v.end);
 };
 
-function sessionsInWeek(sessions: SessionLog[], ws: Date) {
-  const a = dayKey(ws), b = dayKey(addDays(ws, 6));
-  return sessions.filter((s) => {
-    const k = dayKey(new Date(s.date));
-    return k >= a && k <= b;
-  });
-}
-
-/** Flexible schedule: missed planned days roll forward within the same week. */
-export function weekStatus(state: Pick<AppState, "sessions" | "schedule" | "vacations"> & { since?: string }, now = new Date()) {
-  const ws = startOfWeek(now);
-  const today = weekday(now);
-  const planned = state.schedule.days.filter((d) => !onVacation(addDays(ws, d), state.vacations) && (!state.since || dayKey(addDays(ws, d)) >= state.since || d >= today));
-  const fresh = !!state.since && dayKey(ws) < state.since; // first (partial) week of use
-  const target = fresh ? planned.length : state.schedule.days.filter((d) => !onVacation(addDays(ws, d), state.vacations)).length;
-  const weekSessions = sessionsInWeek(state.sessions, ws);
-  const done = weekSessions.length;
-  const doneToday = weekSessions.some((s) => dayKey(new Date(s.date)) === dayKey(now));
-  const dueSoFar = planned.filter((d) => d <= today).length;
-  const deficit = Math.max(0, Math.min(target, dueSoFar) - done);
-  const remainingDays = 7 - today; // including today
-  const left = Math.max(0, target - done);
-  const vacation = onVacation(now, state.vacations);
-  const dueToday = !vacation && !doneToday && deficit > 0;
-  const atRisk = !vacation && left > 0 && left >= remainingDays;
-  const carried = dueToday && !state.schedule.days.includes(today);
-  return { target, done, doneToday, dueToday, deficit, left, remainingDays, atRisk, carried, vacation, weekSessions };
-}
-
-/** Streak in workouts: consecutive weeks that hit their target (or were vacation). */
-export function streak(state: Pick<AppState, "sessions" | "schedule" | "vacations">, now = new Date()) {
-  let total = sessionsInWeek(state.sessions, startOfWeek(now)).length;
-  let ws = addDays(startOfWeek(now), -7);
-  const first = state.sessions.length ? new Date(state.sessions[0]!.date) : now;
-  for (let i = 0; i < 520 && ws >= startOfWeek(first); i++) {
-    const st = weekStatus(state, addDays(ws, 6));
-    if (st.done < st.target) break;
-    total += st.done;
-    ws = addDays(ws, -7);
-  }
-  return total;
-}
-
 export function level(xp: number) {
   const lvl = Math.floor(Math.sqrt(xp / 60)) + 1;
   const cur = 60 * (lvl - 1) ** 2, next = 60 * lvl ** 2;
   return { lvl, into: xp - cur, need: next - cur, pct: (xp - cur) / (next - cur) };
-}
-
-export function nextWorkout(state: Pick<AppState, "workouts" | "schedule">): Workout | undefined {
-  const rot = state.schedule.rotation.filter((id) => state.workouts.some((w) => w.id === id));
-  if (!rot.length) return state.workouts[0];
-  const id = rot[state.schedule.rotationIndex % rot.length];
-  return state.workouts.find((w) => w.id === id);
 }
 
 export function muscleLoad(sessions: SessionLog[], days = 7, now = new Date()) {
