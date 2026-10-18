@@ -1,5 +1,5 @@
 import { Link, useLocation } from "@tanstack/react-router";
-import { Camera, Home, LayoutList, Settings, TrendingUp, User } from "lucide-react";
+import { Camera, Home, LayoutList, Settings, User } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { level, streak } from "@/lib/game";
 import { useApp } from "@/lib/store";
@@ -11,9 +11,13 @@ import { useReminders } from "./useReminders";
 const TABS = [
   { to: "/", label: "Сегодня", icon: Home, match: ["/"] },
   { to: "/plans", label: "Тренировки", icon: LayoutList, match: ["/plans", "/library"] },
-  { to: "/progress", label: "Прогресс", icon: TrendingUp, match: ["/progress"] },
   { to: "/gallery", label: "Фото", icon: Camera, match: ["/gallery"] },
-  { to: "/profile", label: "Профиль", icon: User, match: ["/profile"] },
+  {
+    to: "/profile",
+    label: "Профиль",
+    icon: User,
+    match: ["/profile", "/progress", "/achievements"],
+  },
 ] as const;
 
 export function AppShell({ children }: { children: ReactNode }) {

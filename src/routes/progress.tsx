@@ -1,12 +1,10 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { AlertCircle, CheckCircle2, Info } from "lucide-react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { AlertCircle, ArrowLeft, CheckCircle2, Info } from "lucide-react";
 import { useState } from "react";
 import { BodyMap } from "@/components/game/BodyMap";
 import { Celebrate } from "@/components/game/Celebrate";
 import { useCelebrate } from "@/components/game/useCelebrate";
-import { MonthlyChallenge } from "@/components/game/MonthlyChallenge";
-import { monthlyChallenge } from "@/lib/achievements";
-import { advice, muscleLoad, streak } from "@/lib/game";
+import { advice, muscleLoad } from "@/lib/game";
 import { useApp } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
@@ -40,25 +38,16 @@ export function ProgressOverview() {
   const { load, cats } = muscleLoad(s.sessions, days);
   const tips = advice(s.sessions);
   const total = cats.strength + cats.cardio + cats.stretch || 1;
-  const totalMin = Math.round(s.sessions.reduce((a, x) => a + x.durationSec, 0) / 60);
-  const challenge = monthlyChallenge(s.sessions, new Date());
   const party = useCelebrate();
 
   return (
     <div className="space-y-5">
       <Celebrate show={party} />
-      <h1 className="pt-2 text-3xl font-extrabold tracking-tight">Прогресс</h1>
-      <div className="grid grid-cols-3 gap-3">
-        {[
-          { v: s.sessions.length, l: "тренировок" },
-          { v: streak(s), l: "серия 🔥" },
-          { v: totalMin, l: "минут" },
-        ].map((x) => (
-          <div key={x.l} className="card-soft p-4 text-center">
-            <p className="text-2xl font-extrabold tabular">{x.v}</p>
-            <p className="text-xs text-muted-foreground">{x.l}</p>
-          </div>
-        ))}
+      <div className="flex items-center gap-2 pt-2">
+        <Link to="/profile" className="press -ml-2 rounded-full p-2 hover:bg-muted" aria-label="Назад">
+          <ArrowLeft />
+        </Link>
+        <h1 className="text-3xl font-extrabold tracking-tight">Прогресс</h1>
       </div>
 
       <section className="card-soft p-5">
@@ -120,8 +109,6 @@ export function ProgressOverview() {
           );
         })}
       </section>
-
-      <MonthlyChallenge challenge={challenge} />
 
       <section>
         <h2 className="mb-3 text-lg font-bold">История</h2>

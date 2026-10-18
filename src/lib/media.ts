@@ -3,7 +3,7 @@ import { convertVideo, probeVideo, VIDEO_MAX_BYTES, VIDEO_MAX_SEC } from "./ffmp
 import { isHeicFile } from "./video-rules";
 
 /** User photos/videos live in IndexedDB (too large for the main store). */
-export type Album = "progress" | "goal" | "exercise";
+export type Album = "progress" | "goal" | "exercise" | "avatar";
 export interface MediaItem {
   id: string;
   album: Album;
@@ -124,6 +124,62 @@ export function useBlobUrl(blob: Blob | undefined) {
     return () => URL.revokeObjectURL(u);
   }, [blob]);
   return url;
+}
+
+// ---- Profile avatar (single record, not shown in the gallery) ----
+
+const AVATAR_ID = "avatar";
+
+/** Squares an image to 512x512 JPEG so the avatar never bloats IndexedDB. */
+async function squareImage(file: Blob): Promise<Blob> {
+  const bmp = await createImageBitmap(file);
+  const s = Math.min(bmp.width, bmp.height);
+  const c = document.createElement("canvas");
+  c.width = c.height = 512;
+  const ctx = c.getContext("2d");
+  if (!ctx) return file;
+  ctx.drawImage(bmp, (bmp.width - s) / 2, (bmp.height - s) / 2, s, s, 0, 0, 512, 512);
+  bmp.close();
+  return new Promise((res) =>
+    c.toBlob((b) => res(b ?? file), "image/jpeg", 0.85),
+  );
+}
+
+export async function setAvatarPhoto(file: Blob) {
+  const blob = await squareImage(file);
+  await putMedia({
+    id: AVATAR_ID,
+    album: "avatar",
+    kind: "image",
+    mime: "image/jpeg",
+    date: dayOf(Date.now()),
+    title: "Аватар",
+    note: "",
+    createdAt: Date.now(),
+    blob,
+  });
+}
+
+export const clearAvatarPhoto = () => removeMedia(AVATAR_ID);
+
+/** The profile photo or undefined; re-renders on library changes. */
+export function useAvatarPhoto() {
+  const [blob, setBlob] = useState<Blob | undefined>();
+  useEffect(() => {
+    let on = true;
+    const load = () => {
+      tx<MediaItem | undefined>("readonly", (s) => s.get(AVATAR_ID))
+        .then((m) => on && setBlob(m?.blob))
+        .catch(() => {});
+    };
+    load();
+    subs.add(load);
+    return () => {
+      on = false;
+      subs.delete(load);
+    };
+  }, []);
+  return blob;
 }
 
 export async function addLink(

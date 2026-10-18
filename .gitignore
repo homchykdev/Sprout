@@ -117,3 +117,4 @@ local.properties
 
 ПРИ ОБНОВЛЕНИИ ДЕЛАТЬ npm run build.txt
 ДЛЯ DEV ЗАПУСКА  npm run dev -- --host.txt
+.playwright-mcp/
