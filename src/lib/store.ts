@@ -7,6 +7,7 @@ import {
   planFromSchedule,
 } from "./plan";
 import { DEFAULT_FFMPEG_OPTIONS, DEFAULT_FFMPEG_OUT } from "./video-rules";
+import { DEFAULT_PHOTO_REMINDER, type PhotoReminderSettings } from "./photo-reminders";
 import {
   normalizeMuscles,
   type Plan,
@@ -36,6 +37,10 @@ export interface AppState {
   ffmpegOut: string;
   reminders: { enabled: boolean; hour: number };
   lastNotified: string;
+  /** Progress-photo reminder (every N days since the last photo). */
+  photoReminder: PhotoReminderSettings;
+  /** Day (yyyy-MM-dd) the photo reminder was already sent. */
+  lastPhotoNotified: string;
   since: string;
   voice: VoiceSettings;
   /** Badge ids already celebrated (confetti shown once). */
@@ -95,6 +100,8 @@ export const initialState: AppState = {
   ffmpegOut: "webm",
   reminders: { enabled: true, hour: 18 },
   lastNotified: "",
+  photoReminder: { ...DEFAULT_PHOTO_REMINDER },
+  lastPhotoNotified: "",
   since: "",
   voice: {
     enabled: true,
@@ -169,7 +176,7 @@ export const useApp = create<AppState & Actions>()(
     }),
     {
       name: "pulse-fit-v1",
-      version: 8,
+      version: 9,
       migrate: (persisted, from) =>
         migrateState(persisted as Partial<AppState>, from) as AppState & Actions,
     },
@@ -179,7 +186,7 @@ export const useApp = create<AppState & Actions>()(
 export const uid = () =>
   Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
 
-/** v1 -> v2: legacy muscle keys become body-map muscles; fill new fields. v2 -> v3: badges/medals seen + sound theme. v3 -> v4: single ai.apiKey becomes ai.keys array. v4 -> v5: ffmpegKey for cloud video conversion. v5 -> v6: tunable ffmpegOptions/ffmpegOut. v6 -> v7: MuscleWiki removed (mwKey dropped, "musclewiki" sources become custom). v7 -> v8: weekly schedule becomes the repeating plan cycle. */
+/** v1 -> v2: legacy muscle keys become body-map muscles; fill new fields. v2 -> v3: badges/medals seen + sound theme. v3 -> v4: single ai.apiKey becomes ai.keys array. v4 -> v5: ffmpegKey for cloud video conversion. v5 -> v6: tunable ffmpegOptions/ffmpegOut. v6 -> v7: MuscleWiki removed (mwKey dropped, "musclewiki" sources become custom). v7 -> v8: weekly schedule becomes the repeating plan cycle. v8 -> v9: progress-photo reminders. */
 export function migrateState(p: Partial<AppState>, from: number): Partial<AppState> {
   const out: Partial<AppState> = { ...p };
   delete (out as Record<string, unknown>)["mwKey"];
@@ -225,6 +232,8 @@ export function migrateState(p: Partial<AppState>, from: number): Partial<AppSta
       }));
   }
   out.voice = { ...initialState.voice, ...(p.voice ?? {}) };
+  out.photoReminder = { ...DEFAULT_PHOTO_REMINDER, ...(p.photoReminder ?? {}) };
+  if (typeof p.lastPhotoNotified !== "string") out.lastPhotoNotified = "";
   if (from < 3) {
     if (!Array.isArray(p.badgesSeen)) out.badgesSeen = [];
     if (!Array.isArray(p.medalsSeen)) out.medalsSeen = [];

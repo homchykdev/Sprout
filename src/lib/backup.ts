@@ -13,7 +13,7 @@ export const SECTIONS = {
   prefs: {
     label: "Настройки",
     hint: "имя, напоминания, голос",
-    keys: ["name", "reminders", "voice"],
+    keys: ["name", "reminders", "voice", "photoReminder"],
   },
   keys: {
     label: "Ключи",

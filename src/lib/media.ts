@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { convertVideo, probeVideo, VIDEO_MAX_BYTES, VIDEO_MAX_SEC } from "./ffmpeg";
+import type { PoseSpec, PoseStrain, PoseView } from "./pose";
 import { isHeicFile } from "./video-rules";
 
 /** User photos/videos live in IndexedDB (too large for the main store). */
@@ -21,6 +22,9 @@ export interface MediaItem {
   groupId?: string | undefined;
   /** The group's preview photo. */
   cover?: boolean | undefined;
+  /** Guided shot metadata: where the body faces and whether muscles are tense. */
+  pose?: PoseView | undefined;
+  strain?: PoseStrain | undefined;
 }
 
 const DB = "pulse-media",
@@ -323,6 +327,67 @@ export async function addFiles(
     }
   }
   return { added, converted, skipped, tooHeavy };
+}
+
+const newId = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+
+export interface CaptureShot {
+  blob: Blob;
+  spec: PoseSpec;
+}
+
+/** Saves a guided capture set as one group (one cover, pose tags per shot). */
+export async function saveCaptureSet(shots: CaptureShot[]): Promise<string[]> {
+  if (!shots.length) return [];
+  const groupId = newId();
+  const base = Date.now();
+  const ids: string[] = [];
+  for (const [i, shot] of shots.entries()) {
+    const id = newId();
+    await putMedia({
+      id,
+      album: "progress",
+      kind: "image",
+      mime: "image/jpeg",
+      title: shot.spec.title,
+      note: "",
+      createdAt: base + i,
+      date: dayOf(base),
+      blob: shot.blob,
+      groupId,
+      cover: i === 0,
+      pose: shot.spec.view,
+      strain: shot.spec.strain,
+    });
+    ids.push(id);
+  }
+  return ids;
+}
+
+/** Newest progress photo in the same pose — the «призрак» overlay. */
+export async function lastPhotoForPose(
+  view: PoseView,
+  strain: PoseStrain,
+): Promise<MediaItem | undefined> {
+  const all = await listMedia();
+  return all
+    .filter(
+      (x) =>
+        x.album === "progress" &&
+        x.kind === "image" &&
+        !!x.blob &&
+        x.pose === view &&
+        x.strain === strain,
+    )
+    .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt)[0];
+}
+
+/** Latest progress-photo date (any kind of image) for reminders. */
+export async function latestProgressDate(): Promise<string | undefined> {
+  const all = await listMedia();
+  return all
+    .filter((x) => x.album === "progress" && x.kind === "image")
+    .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt)[0]?.date;
 }
 
 const toB64 = (b: Blob) =>
