@@ -1,5 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { Check, ChevronRight, Palmtree, Play } from "lucide-react";
+import { Camera, Check, ChevronRight, Palmtree, Play } from "lucide-react";
+import { usePhotoDue } from "@/hooks/usePhotoReminder";
+import { reminderMessage } from "@/lib/photo-reminders";
 import { Mascot, type Mood } from "@/components/game/Mascot";
 import { TapButton } from "@/components/game/TapButton";
 import { Celebrate } from "@/components/game/Celebrate";
@@ -79,6 +81,7 @@ function Today() {
   const quests = dailyQuests(s.sessions, now);
   const challenge = monthlyChallenge(s.sessions, now);
   const party = useCelebrate();
+  const photo = usePhotoDue();
   const w = nx?.workout;
 
   return (
@@ -107,6 +110,24 @@ function Today() {
           </Link>
         </div>
       ) : null}
+
+      {photo.due && (
+        <Link
+          to="/capture"
+          className="press card-soft flex items-center gap-3 p-4 transition-colors hover:bg-muted/50"
+        >
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary-soft text-primary-shade">
+            <Camera className="h-5 w-5" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block font-bold">Пора обновить фото прогресса</span>
+            <span className="block text-sm text-muted-foreground">
+              {reminderMessage(photo.lastDate)}
+            </span>
+          </span>
+          <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" />
+        </Link>
+      )}
 
       {w ? (
         <section
@@ -199,7 +220,8 @@ function Today() {
           })}
         </div>
         <p className="mt-4 text-xs text-muted-foreground">
-          Пропущенный день тратит доп-выходной, затем — заморозки серии. Остаток видно во вкладке «План».
+          Пропущенный день тратит доп-выходной, затем — заморозки серии. Остаток видно во вкладке
+          «План».
         </p>
       </section>
 

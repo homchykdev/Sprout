@@ -5,6 +5,7 @@ import { level } from "@/lib/game";
 import { planProgress } from "@/lib/plan";
 import { useApp } from "@/lib/store";
 import { cn } from "@/lib/utils";
+import { usePhotoReminders } from "@/hooks/usePhotoReminder";
 import { Mascot } from "./Mascot";
 import { VacationButton } from "./VacationButton";
 import { useReminders } from "./useReminders";
@@ -25,7 +26,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   const { pathname } = useLocation();
-  const immersive = pathname.startsWith("/play");
+  const immersive = pathname.startsWith("/play") || pathname.startsWith("/capture");
 
   if (!mounted)
     return (
@@ -39,7 +40,11 @@ export function AppShell({ children }: { children: ReactNode }) {
 
 function Chrome({ children, pathname }: { children: ReactNode; pathname: string }) {
   useReminders();
-  useEffect(() => { if (!useApp.getState().since) useApp.getState().set({ since: new Date().toISOString().slice(0, 10) }); }, []);
+  usePhotoReminders();
+  useEffect(() => {
+    if (!useApp.getState().since)
+      useApp.getState().set({ since: new Date().toISOString().slice(0, 10) });
+  }, []);
   const s = useApp();
   const st = planProgress(s).streak;
   const lv = level(s.xp);
@@ -54,7 +59,9 @@ function Chrome({ children, pathname }: { children: ReactNode; pathname: string 
           <span className="flex items-center gap-1.5 rounded-full bg-gold-soft px-3 py-1.5 text-sm font-bold text-gold-shade tabular">
             ⚡ {s.xp}
           </span>
-          <span className="rounded-full bg-sky-soft px-3 py-1.5 text-sm font-bold text-sky-shade">Ур. {lv.lvl}</span>
+          <span className="rounded-full bg-sky-soft px-3 py-1.5 text-sm font-bold text-sky-shade">
+            Ур. {lv.lvl}
+          </span>
         </div>
         <div className="flex items-center gap-1">
           <VacationButton />
@@ -67,7 +74,9 @@ function Chrome({ children, pathname }: { children: ReactNode; pathname: string 
           </Link>
         </div>
       </header>
-      <main key={pathname} className="animate-rise px-5 pb-32 pt-2">{children}</main>
+      <main key={pathname} className="animate-rise px-5 pb-32 pt-2">
+        {children}
+      </main>
       <nav className="glass fixed inset-x-0 bottom-0 z-30 border-t pb-[env(safe-area-inset-bottom)]">
         <div className="mx-auto grid max-w-xl grid-cols-5">
           {TABS.map(({ to, label, icon: Icon, match }) => {
@@ -76,10 +85,22 @@ function Chrome({ children, pathname }: { children: ReactNode; pathname: string 
             );
             return (
               <Link key={to} to={to} className="press flex flex-col items-center gap-1 py-2.5">
-                <span className={cn("flex h-9 w-12 items-center justify-center rounded-2xl transition-colors duration-300", active ? "bg-primary-soft text-primary-shade" : "text-muted-foreground")}>
+                <span
+                  className={cn(
+                    "flex h-9 w-12 items-center justify-center rounded-2xl transition-colors duration-300",
+                    active ? "bg-primary-soft text-primary-shade" : "text-muted-foreground",
+                  )}
+                >
                   <Icon className="h-[22px] w-[22px]" strokeWidth={active ? 2.5 : 2} />
                 </span>
-                <span className={cn("text-[11px] font-semibold", active ? "text-foreground" : "text-muted-foreground")}>{label}</span>
+                <span
+                  className={cn(
+                    "text-[11px] font-semibold",
+                    active ? "text-foreground" : "text-muted-foreground",
+                  )}
+                >
+                  {label}
+                </span>
               </Link>
             );
           })}

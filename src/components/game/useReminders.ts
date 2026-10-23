@@ -1,19 +1,10 @@
 import { useEffect } from "react";
 import { dayKey, NAGS } from "@/lib/game";
+import { notify } from "@/lib/notify";
 import { dueToday, planProgress } from "@/lib/plan";
 import { useApp } from "@/lib/store";
 
-export async function notify(title: string, body: string) {
-  if (typeof Notification === "undefined" || Notification.permission !== "granted") return false;
-  try {
-    const reg = await navigator.serviceWorker?.getRegistration();
-    if (reg) await reg.showNotification(title, { body, icon: "/icon-512.png", badge: "/icon-512.png", tag: "pulse-nag" });
-    else new Notification(title, { body, icon: "/icon-512.png" });
-    return true;
-  } catch {
-    return false;
-  }
-}
+export { notify } from "@/lib/notify";
 
 /** Escalating reminders: at the chosen hour, +2h and +4h while today's workout is due. */
 export function useReminders() {
@@ -30,7 +21,10 @@ export function useReminders() {
       const count = d === dayKey(now) ? Number(n) || 0 : 0;
       const slot = s.reminders.hour + count * 2;
       if (count >= 3 || now.getHours() < slot) return;
-      notify(atRisk ? "Серия под угрозой! 🔥" : "Огонёк ждёт тебя", NAGS[Math.min(count + (atRisk ? 2 : 0), NAGS.length - 1)] ?? "").then((ok) => {
+      notify(
+        atRisk ? "Серия под угрозой! 🔥" : "Огонёк ждёт тебя",
+        NAGS[Math.min(count + (atRisk ? 2 : 0), NAGS.length - 1)] ?? "",
+      ).then((ok) => {
         if (ok) useApp.getState().set({ lastNotified: `${dayKey(now)}#${count + 1}` });
       });
     };

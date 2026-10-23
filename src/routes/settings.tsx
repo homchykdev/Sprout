@@ -6,6 +6,8 @@ import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
 import { TapButton } from "@/components/game/TapButton";
 import { notify } from "@/components/game/useReminders";
+import { usePhotoDue } from "@/hooks/usePhotoReminder";
+import { PHOTO_INTERVALS, nextPhotoDate, reminderMessage } from "@/lib/photo-reminders";
 import { maskKey } from "@/lib/ai-keys";
 import { checkAiKeys, checkFfmpegKey } from "@/lib/clients";
 import { useApp } from "@/lib/store";
@@ -116,10 +118,11 @@ function Settings() {
 
 export function SettingsSections() {
   const s = useApp();
+  const photo = usePhotoDue();
+  const nextPhoto = nextPhotoDate(photo.lastDate, s.photoReminder);
 
   return (
     <>
-
       <Section title="Профиль">
         <input
           className={field}
@@ -173,6 +176,81 @@ export function SettingsSections() {
         >
           <Bell className="h-4 w-4" /> Разрешить уведомления
         </TapButton>
+      </Section>
+
+      <Section title="Фото прогресса">
+        <div className="flex items-center justify-between">
+          <span>Напоминать делать фото</span>
+          <Switch
+            checked={s.photoReminder.enabled}
+            onCheckedChange={(v) => s.set({ photoReminder: { ...s.photoReminder, enabled: v } })}
+          />
+        </div>
+        {s.photoReminder.enabled && (
+          <>
+            <label className="flex items-center justify-between">
+              <span>Интервал</span>
+              <select
+                className="rounded-xl border-2 px-3 py-2"
+                value={s.photoReminder.everyDays}
+                onChange={(e) =>
+                  s.set({
+                    photoReminder: { ...s.photoReminder, everyDays: +e.target.value },
+                  })
+                }
+              >
+                {PHOTO_INTERVALS.map((n) => (
+                  <option key={n} value={n}>
+                    каждые {n} дней
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex items-center justify-between">
+              <span>Напоминание в</span>
+              <select
+                className="rounded-xl border-2 px-3 py-2"
+                value={s.photoReminder.hour}
+                onChange={(e) =>
+                  s.set({ photoReminder: { ...s.photoReminder, hour: +e.target.value } })
+                }
+              >
+                {Array.from({ length: 17 }, (_, i) => i + 6).map((h) => (
+                  <option key={h} value={h}>
+                    {h}:00
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p className="text-sm text-muted-foreground">
+              {photo.lastDate
+                ? `${reminderMessage(photo.lastDate)}${nextPhoto ? ` Следующее фото — ${new Date(nextPhoto + "T00:00").toLocaleDateString("ru", { day: "numeric", month: "long" })}.` : ""}`
+                : "Фото ещё не было — начни с первого кадра в одинаковой позе."}
+            </p>
+            <TapButton
+              variant="soft"
+              size="sm"
+              onClick={async () => {
+                if (typeof Notification === "undefined") {
+                  toast.error("Браузер не поддерживает уведомления");
+                  return;
+                }
+                const p = await Notification.requestPermission();
+                if (p !== "granted") {
+                  toast.error("Уведомления запрещены в браузере");
+                  return;
+                }
+                await notify("Фото прогресса 📸", "Буду напоминать, когда пора сделать кадр.");
+              }}
+            >
+              <Bell className="h-4 w-4" /> Разрешить уведомления
+            </TapButton>
+            <p className="text-xs text-muted-foreground">
+              Уведомление приходит, пока приложение открыто или установлено на главный экран. Баннер
+              «Пора обновить фото» виден всегда, когда срок подошёл.
+            </p>
+          </>
+        )}
       </Section>
 
       <Section title="Звук и голос">
