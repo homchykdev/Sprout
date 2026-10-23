@@ -25,6 +25,8 @@ export function SettingsDraftProvider({ children }: { children: ReactNode }) {
     const s = useApp.getState();
     s.set(draftToState(draft, s.plan));
     baseline.current = draft;
+    // New identity forces a re-render so `dirty` re-computes against the new baseline.
+    setDraft((d) => ({ ...d }));
   };
 
   const discard = () => setDraft(baseline.current);

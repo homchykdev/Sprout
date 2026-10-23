@@ -1,28 +1,28 @@
 import { Check, Save } from "lucide-react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { TapButton } from "@/components/game/TapButton";
 import { cn } from "@/lib/utils";
 import { useSettingsDraft } from "./draft-context";
 
-const SAVE_BAR_OFFSET = "bottom-[calc(env(safe-area-inset-bottom)+88px)]";
-
-/** Pinned save bar above the bottom navigation: always visible, disabled once saved. */
+/**
+ * Pinned save bar above the bottom navigation: always visible, disabled once saved.
+ * Portaled to body: the animated <main> becomes a containing block for fixed children.
+ */
 export function FloatingSaveBar() {
   const { dirty, save } = useSettingsDraft();
-  return (
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  if (!mounted) return null;
+  return createPortal(
     <div
       className={cn(
         "pointer-events-none fixed inset-x-0 z-40 flex justify-center",
-        SAVE_BAR_OFFSET,
+        "bottom-[calc(env(safe-area-inset-bottom)+88px)]",
       )}
     >
       <div className="pointer-events-auto w-full max-w-xl px-5">
-        <TapButton
-          className="h-14 w-full shadow-lg"
-          size="lg"
-          disabled={!dirty}
-          onClick={save}
-          aria-disabled={!dirty}
-        >
+        <TapButton className="h-14 w-full shadow-lg" size="lg" disabled={!dirty} onClick={save}>
           {dirty ? (
             <>
               <Save className="h-5 w-5" /> Сохранить настройки
@@ -34,6 +34,7 @@ export function FloatingSaveBar() {
           )}
         </TapButton>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

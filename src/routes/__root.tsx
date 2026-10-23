@@ -81,18 +81,28 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
       { name: "theme-color", content: "#faf9f5" },
-      { name: "apple-mobile-web-app-capable", content: "yes" },
+      { name: "mobile-web-app-capable", content: "yes" },
       { title: "Пульс — тренировки, которые затягивают" },
-      { name: "description", content: "Тренировки как игра: серии, опыт, напоминания, карта нагрузки мышц и гибкое расписание." },
+      {
+        name: "description",
+        content:
+          "Тренировки как игра: серии, опыт, напоминания, карта нагрузки мышц и гибкое расписание.",
+      },
       { property: "og:title", content: "Пульс — тренировки, которые затягивают" },
-      { property: "og:description", content: "Тренировки как игра: серии, опыт, напоминания и карта нагрузки." },
+      {
+        property: "og:description",
+        content: "Тренировки как игра: серии, опыт, напоминания и карта нагрузки.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
     links: [
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
-      { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&display=swap" },
+      {
+        rel: "stylesheet",
+        href: "https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&display=swap",
+      },
       { rel: "stylesheet", href: appCss },
       { rel: "icon", type: "image/png", href: "/favicon.png" },
       { rel: "apple-touch-icon", href: "/icon-512.png" },
