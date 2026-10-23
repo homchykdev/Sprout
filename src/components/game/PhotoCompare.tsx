@@ -21,12 +21,19 @@ export function PhotoCompare({ items, onClose }: { items: MediaItem[]; onClose: 
   );
   const [mode, setMode] = useState<Mode>(sorted.length === 2 ? "slider" : "scrub");
   const [flipped, setFlipped] = useState(false);
+  const open = sorted.length >= 2;
   const first = sorted[0];
   const last = sorted[sorted.length - 1];
   const pair = flipped && first && last ? [last, first] : [first, last];
 
   useEffect(() => setMounted(true), []);
   useEffect(() => {
+    if (!open) return;
+    setMode(sorted.length === 2 ? "slider" : "scrub");
+    setFlipped(false);
+  }, [open, sorted.length]);
+  useEffect(() => {
+    if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
@@ -36,9 +43,9 @@ export function PhotoCompare({ items, onClose }: { items: MediaItem[]; onClose: 
       window.removeEventListener("keydown", onKey);
       document.body.style.overflow = "";
     };
-  }, [onClose]);
+  }, [open, onClose]);
 
-  if (!mounted) return null;
+  if (!mounted || !open) return null;
 
   const same =
     !!first?.pose &&
@@ -47,7 +54,7 @@ export function PhotoCompare({ items, onClose }: { items: MediaItem[]; onClose: 
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[150] flex flex-col bg-black/95 text-white"
+      className="fixed inset-0 z-[150] flex flex-col bg-black text-white"
       role="dialog"
       aria-modal="true"
       aria-label="Сравнение фото"
