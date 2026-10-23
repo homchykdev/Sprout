@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
   ArrowDown,
   ArrowUp,
@@ -15,15 +15,9 @@ import {
 import { useState } from "react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { TapButton } from "@/components/game/TapButton";
 import { aiCreateWorkout } from "@/lib/clients";
-import {
-  DEFAULT_PLAN_SETTINGS,
-  forecast,
-  nextWorkout,
-  planProgress,
-} from "@/lib/plan";
+import { forecast, nextWorkout, planProgress } from "@/lib/plan";
 import { useApp, uid } from "@/lib/store";
 import type { Workout } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -108,68 +102,21 @@ function ProtectionBar() {
   );
 }
 
-/** Настройки x/n/y/порог — то, что позже зашьётся в приложение. */
-function PlanSettingsBox() {
-  const s = useApp();
-  const st = s.plan.settings;
-  const upd = (patch: Partial<typeof st>) =>
-    s.set({ plan: { ...s.plan, settings: { ...st, ...patch } } });
-  const rows: { key: keyof typeof st; label: string; hint: string; min: number; max: number }[] = [
-    {
-      key: "bonusMax",
-      label: "Максимум доп-выходных (x)",
-      hint: "Сколько может лежать про запас.",
-      min: 0,
-      max: 20,
-    },
-    {
-      key: "bonusRestoreDays",
-      label: "Восстановление доп-выходного (n)",
-      hint: "Через сколько дней трата возвращается.",
-      min: 1,
-      max: 30,
-    },
-    {
-      key: "freezeMax",
-      label: "Максимум заморозок (y)",
-      hint: "Добываются за неделю ≥ порога.",
-      min: 0,
-      max: 20,
-    },
-    {
-      key: "freezeThresholdPct",
-      label: "Порог недели, %",
-      hint: "Квесты или тренировки ≥ — получишь заморозку.",
-      min: 0,
-      max: 100,
-    },
-  ];
+/** Ссылка: параметры серии (x/n/y/порог) теперь на странице настроек. */
+function PlanSettingsLink() {
   return (
-    <section className="card-soft space-y-3 p-5">
-      <h2 className="font-bold">Защита серии</h2>
-      {rows.map(({ key, label, hint, min, max }) => (
-        <label key={key} className="flex items-center gap-3">
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-semibold">{label}</span>
-            <span className="block text-xs text-muted-foreground">{hint}</span>
-          </span>
-          <Input
-            type="number"
-            className="w-20 rounded-xl border-2 text-center tabular"
-            min={min}
-            max={max}
-            value={st[key]}
-            onChange={(e) => {
-              const v = Math.min(max, Math.max(min, Number(e.target.value) || 0));
-              upd({ [key]: v });
-            }}
-          />
-        </label>
-      ))}
-      <p className="text-xs text-muted-foreground">
-        Пропущенный 1-й и 2-й день тратят доп-выходной, с 3-го — заморозки. Отдых и отпуск — безопасны.
-      </p>
-    </section>
+    <Link
+      to="/settings"
+      className="press flex min-h-[44px] items-center gap-2 rounded-2xl border-2 bg-card px-4 py-3 text-sm font-semibold hover:bg-muted"
+    >
+      <span className="flex-1">
+        Защита серии: доп-выходные, заморозки, порог
+        <span className="block text-xs font-normal text-muted-foreground">
+          Настраивается в настройках
+        </span>
+      </span>
+      <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+    </Link>
   );
 }
 
@@ -264,7 +211,9 @@ function PlanContent() {
                   info.status === "future" && "bg-primary-soft text-primary-shade",
                   info.status === "rest" && "bg-muted text-muted-foreground",
                   info.status === "vacation" && "bg-sky-soft text-sky-shade",
-                  (info.status === "off" || info.status === "missed" || info.status === "protected") &&
+                  (info.status === "off" ||
+                    info.status === "missed" ||
+                    info.status === "protected") &&
                     "bg-muted text-muted-foreground",
                 )}
               >
@@ -278,14 +227,14 @@ function PlanContent() {
       <p className="text-sm font-medium">
         {nx ? (
           <>
-            Следующий шаг: {(nx.workout?.name ?? "нет тренировки")} —{" "}
+            Следующий шаг: {nx.workout?.name ?? "нет тренировки"} —{" "}
             {nx.date.toLocaleDateString("ru", { day: "numeric", month: "short" })}
           </>
         ) : (
           "План пуст — добавь шаги цикла."
         )}
       </p>
-      <PlanSettingsBox />
+      <PlanSettingsLink />
       <p className="-mt-2 text-xs text-muted-foreground">
         Старт цикла: {new Date(s.plan.origin + "T12:00").toLocaleDateString("ru")}. Заморозки
         возвращает итог недели ≥ {s.plan.settings.freezeThresholdPct}% (квесты или план). Серия
@@ -306,10 +255,7 @@ function PlanStepAdder() {
           variant="soft"
           className="flex-1"
           onClick={() =>
-            s.addPlanStep(
-              s.plan.steps.length - 1,
-              { id: `step-${uid()}`, kind: "rest" },
-            )
+            s.addPlanStep(s.plan.steps.length - 1, { id: `step-${uid()}`, kind: "rest" })
           }
         >
           <BedDouble className="h-4 w-4" /> День отдыха
@@ -360,7 +306,10 @@ function PlansContent({ hidden }: { hidden: boolean }) {
   for (let i = 0; i < s.plan.steps.length; i++) {
     const st = s.plan.steps[i]!;
     if (st.kind === "workout")
-      planHits.set(st.workoutId ?? "none", [...(planHits.get(st.workoutId ?? "none") ?? []), i + 1]);
+      planHits.set(st.workoutId ?? "none", [
+        ...(planHits.get(st.workoutId ?? "none") ?? []),
+        i + 1,
+      ]);
   }
 
   return (
@@ -371,11 +320,16 @@ function PlansContent({ hidden }: { hidden: boolean }) {
           <TapButton
             size="sm"
             variant="flame"
-            onClick={() => (s.ai.keys.length ? setAiOpen(true) : toast("Добавьте ИИ-ключ в Профиле"))}
+            onClick={() =>
+              s.ai.keys.length ? setAiOpen(true) : toast("Добавьте ИИ-ключ в Профиле")
+            }
           >
             <Sparkles className="h-4 w-4" /> ИИ
           </TapButton>
-          <TapButton size="sm" onClick={() => setEdit({ id: `w-${uid()}`, name: "", emoji: "💪", items: [] })}>
+          <TapButton
+            size="sm"
+            onClick={() => setEdit({ id: `w-${uid()}`, name: "", emoji: "💪", items: [] })}
+          >
             <Plus className="h-4 w-4" /> Новая
           </TapButton>
         </div>
@@ -458,7 +412,8 @@ function WorkoutEditor({ value, onClose }: { value: Workout | null; onClose: () 
     [x[i], x[i + d]] = [x[i + d]!, x[i]!];
     setItems(x);
   };
-  const num = "w-14 rounded-xl border-2 bg-card px-2 py-1 text-center text-sm tabular outline-none focus:border-primary";
+  const num =
+    "w-14 rounded-xl border-2 bg-card px-2 py-1 text-center text-sm tabular outline-none focus:border-primary";
 
   return (
     <Dialog open={!!value} onOpenChange={(o) => !o && onClose()}>
@@ -517,7 +472,9 @@ function WorkoutEditor({ value, onClose }: { value: Workout | null; onClose: () 
                       className={num}
                       value={it.sets}
                       onChange={(e) =>
-                        setItems(items.map((x, j) => (j === i ? { ...x, sets: +e.target.value } : x)))
+                        setItems(
+                          items.map((x, j) => (j === i ? { ...x, sets: +e.target.value } : x)),
+                        )
                       }
                     />
                   </label>
