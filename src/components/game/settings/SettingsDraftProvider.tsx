@@ -1,0 +1,39 @@
+import { useRef, useState, type ReactNode } from "react";
+import { draftToState, isDraftDirty, pickDraft, type SettingsDraft } from "@/lib/settings-draft";
+import type { AiSettings } from "@/lib/types";
+import type { PlanSettings } from "@/lib/plan";
+import { useApp, type VoiceSettings } from "@/lib/store";
+import { SettingsDraftContext } from "./draft-context";
+
+/** Snapshot provider: edits live in local state, the store changes only via save(). */
+export function SettingsDraftProvider({ children }: { children: ReactNode }) {
+  // The baseline is the store as the user entered the page; dirty is measured against it.
+  const baseline = useRef<SettingsDraft>(pickDraft(useApp.getState()));
+  const [draft, setDraft] = useState<SettingsDraft>(baseline.current);
+
+  const update = (patch: Partial<SettingsDraft>) => setDraft((d) => ({ ...d, ...patch }));
+  const updateVoice = (patch: Partial<VoiceSettings>) =>
+    setDraft((d) => ({ ...d, voice: { ...d.voice, ...patch } }));
+  const updateAi = (patch: Partial<AiSettings>) =>
+    setDraft((d) => ({ ...d, ai: { ...d.ai, ...patch } }));
+  const updatePlanSettings = (patch: Partial<PlanSettings>) =>
+    setDraft((d) => ({ ...d, planSettings: { ...d.planSettings, ...patch } }));
+
+  const dirty = isDraftDirty(draft, baseline.current);
+
+  const save = () => {
+    const s = useApp.getState();
+    s.set(draftToState(draft, s.plan));
+    baseline.current = draft;
+  };
+
+  const discard = () => setDraft(baseline.current);
+
+  return (
+    <SettingsDraftContext.Provider
+      value={{ draft, dirty, update, updateVoice, updateAi, updatePlanSettings, save, discard }}
+    >
+      {children}
+    </SettingsDraftContext.Provider>
+  );
+}

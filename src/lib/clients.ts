@@ -5,6 +5,7 @@ import { useApp, uid } from "./store";
 import {
   CATEGORIES,
   MUSCLES,
+  type AiSettings,
   type Category,
   type Exercise,
   type MuscleKey,
@@ -60,19 +61,19 @@ export async function signedVideo(url?: string) {
 // ---------- Health checks (cheap, no quota spent on generation) ----------
 
 /** Returns a human line like "Ключ 2 работает · 340 мс". Throws a Russian error otherwise. */
-export async function checkAiKeys(): Promise<string> {
-  const ai = useApp.getState().ai;
+export async function checkAiKeys(override?: AiSettings): Promise<string> {
+  const ai = override ?? useApp.getState().ai;
   if (!ai.keys.length) throw new Error("Добавьте ключ ИИ в настройках");
   const r = await pingAi({ data: { provider: ai.provider, keys: ai.keys, baseUrl: ai.baseUrl } });
-  if (r.keyIndex > 0) {
+  if (r.keyIndex > 0 && !override) {
     useApp.getState().set({ ai: { ...ai, keys: promoteKey(ai.keys, r.keyIndex) } });
   }
   return `Ключ ${r.keyIndex + 1} работает · ${r.ms} мс`;
 }
 
 /** Verifies the ffmpeg-api.com key via a cheap directory listing (no quota spent). */
-export async function checkFfmpegKey(): Promise<string> {
-  const key = useApp.getState().ffmpegKey;
+export async function checkFfmpegKey(override?: string): Promise<string> {
+  const key = override ?? useApp.getState().ffmpegKey;
   if (!key) throw new Error("Сначала вставьте ключ ffmpeg-api.com");
   const { ms } = await ffmpegPing({ data: { apiKey: key } });
   return `Ключ работает · ${ms} мс`;

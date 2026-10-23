@@ -1,9 +1,8 @@
-import { CheckCircle2, Download, Play, Upload, XCircle } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { Download, Upload } from "lucide-react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Slider } from "@/components/ui/slider";
-import { Switch } from "@/components/ui/switch";
+import { TapButton } from "@/components/game/TapButton";
 import {
   applyBackup,
   buildSingleFile,
@@ -15,11 +14,9 @@ import {
   type SectionId,
   type Strategy,
 } from "@/lib/backup";
-import { listMedia } from "@/lib/media";
 import { useApp, type AppState } from "@/lib/store";
 import { cn } from "@/lib/utils";
-import { beep, fanfare, listVoices, primeAudio, speak } from "@/lib/voice";
-import { TapButton } from "./TapButton";
+import { SectionCard } from "./SectionCard";
 
 const ORDER: SectionId[] = ["library", "progress", "workouts", "vacations", "prefs", "keys"];
 /** Sections where merging makes sense; prefs/keys can only be replaced. */
@@ -38,6 +35,7 @@ function friendlyError(id: SectionId, e: unknown): string {
   return "Файл повреждён или не подходит для этого раздела. Данные не тронуты.";
 }
 
+/** Backup export/import per section; applies to the store immediately (outside the draft). */
 export function DataSection() {
   const [target, setTarget] = useState<SectionId | null>(null);
   const [incoming, setIncoming] = useState<{ id: SectionId; data: Partial<AppState> } | null>(null);
@@ -195,200 +193,20 @@ export function DataSection() {
   );
 }
 
-export function VoiceSection() {
-  const v = useApp((s) => s.voice);
-  const set = useApp((s) => s.set);
-  const up = (p: Partial<typeof v>) => set({ voice: { ...v, ...p } });
-  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
-  useEffect(() => {
-    if (typeof speechSynthesis === "undefined") return;
-    const load = () => setVoices(listVoices());
-    load();
-    speechSynthesis.addEventListener("voiceschanged", load);
-    return () => speechSynthesis.removeEventListener("voiceschanged", load);
-  }, []);
-  const row = "flex items-center justify-between gap-3";
+export function DataGroup() {
+  const resetAll = useApp((s) => s.resetAll);
   return (
-    <>
-      <div className={row}>
-        <span>Голосовые подсказки</span>
-        <Switch checked={v.enabled} onCheckedChange={(x) => up({ enabled: x })} />
-      </div>
-      <div className={row}>
-        <span>Сигналы таймера</span>
-        <Switch checked={v.beeps} onCheckedChange={(x) => up({ beeps: x })} />
-      </div>
-      <div className={row}>
-        <span>Метроном темпа</span>
-        <Switch checked={v.metronome} onCheckedChange={(x) => up({ metronome: x })} />
-      </div>
-      <div className={row}>
-        <span>«Половина» и «ещё 10 секунд»</span>
-        <Switch checked={v.cues} onCheckedChange={(x) => up({ cues: x })} />
-      </div>
-      <div>
-        <p className="mb-1.5 text-sm">Тема звуков победы</p>
-        <div
-          className="flex rounded-2xl bg-muted p-1 text-sm font-semibold"
-          role="radiogroup"
-          aria-label="Тема звуков победы"
-        >
-          {(["spark", "triumph", "calm"] as const).map((t) => (
-            <button
-              key={t}
-              role="radio"
-              aria-checked={v.theme === t}
-              onClick={() => {
-                primeAudio();
-                up({ theme: t });
-                setTimeout(() => fanfare("workout"), 60);
-              }}
-              className={cn(
-                "min-h-[44px] flex-1 rounded-xl py-2 transition-colors",
-                v.theme === t ? "bg-card shadow-sm" : "text-muted-foreground",
-              )}
-            >
-              {t === "spark" ? "✨ Искра" : t === "triumph" ? "🏆 Триумф" : "🌊 Спокойная"}
-            </button>
-          ))}
-        </div>
-      </div>
-      <p className="text-xs text-muted-foreground">
-        Темп задаётся в каждой тренировке отдельно, а в карточке упражнения хранится рекомендованный
-        темп.
-      </p>
-      {voices.length > 0 ? (
-        <select
-          className="w-full rounded-2xl border-2 bg-card px-4 py-3"
-          value={v.voiceURI}
-          onChange={(e) => up({ voiceURI: e.target.value })}
-        >
-          <option value="">Голос по умолчанию</option>
-          {voices.map((x) => (
-            <option key={x.voiceURI} value={x.voiceURI}>
-              {x.name}
-            </option>
-          ))}
-        </select>
-      ) : (
-        <p className="text-sm text-muted-foreground">
-          Русский голос не найден на устройстве — будет использован системный.
-        </p>
-      )}
-      <label className="block text-sm">
-        Скорость речи: <b className="tabular">{v.rate.toFixed(2)}</b>
-        <Slider
-          className="mt-2"
-          min={0.7}
-          max={1.5}
-          step={0.05}
-          value={[v.rate]}
-          onValueChange={([r]) => up({ rate: r ?? 1 })}
-        />
-      </label>
-      <label className="block text-sm">
-        Громкость сигналов
-        <Slider
-          className="mt-2"
-          min={0.05}
-          max={1}
-          step={0.05}
-          value={[v.volume]}
-          onValueChange={([r]) => up({ volume: r ?? 0.6 })}
-        />
-      </label>
-      <TapButton
-        variant="soft"
-        size="sm"
-        onClick={() => {
-          primeAudio();
-          beep("go");
-          speak("Привет! Я Огонёк. Начинаем тренировку!", { interrupt: true });
-        }}
+    <SectionCard
+      title="Данные"
+      hint="Все данные хранятся на устройстве. Делай резервную копию, чтобы перенести прогресс."
+    >
+      <DataSection />
+      <button
+        className="text-sm font-semibold text-destructive"
+        onClick={() => confirm("Удалить все данные безвозвратно?") && resetAll()}
       >
-        <Play className="h-4 w-4" /> Проверить звук
-      </TapButton>
-    </>
-  );
-}
-
-/** "Проверить" button for API keys: cheap request, inline ✓/✗ status. */
-export function ApiCheck({ label, check }: { label: string; check: () => Promise<string> }) {
-  const [st, setSt] = useState<"idle" | "busy" | "ok" | "fail">("idle");
-  const [msg, setMsg] = useState("");
-  const run = async () => {
-    setSt("busy");
-    setMsg("");
-    try {
-      const line = await check();
-      setSt("ok");
-      setMsg(line);
-    } catch (e) {
-      setSt("fail");
-      setMsg(e instanceof Error ? e.message : "Не удалось проверить");
-    }
-  };
-  return (
-    <div>
-      <TapButton
-        variant="soft"
-        size="sm"
-        className="min-h-[44px] w-full"
-        disabled={st === "busy"}
-        onClick={run}
-      >
-        {st === "busy" ? "Проверяю…" : label}
-      </TapButton>
-      {(st === "ok" || st === "fail") && (
-        <p
-          role="status"
-          className={cn(
-            "mt-1.5 flex items-center gap-1.5 text-sm font-semibold",
-            st === "ok" ? "text-primary-shade" : "text-destructive",
-          )}
-        >
-          {st === "ok" ? (
-            <CheckCircle2 className="h-4 w-4 shrink-0" />
-          ) : (
-            <XCircle className="h-4 w-4 shrink-0" />
-          )}
-          {msg}
-        </p>
-      )}
-    </div>
-  );
-}
-
-/** Explicit save confirmation: settings autosave, this re-reads storage and proves it. */
-export function SaveCheck() {
-  const [busy, setBusy] = useState(false);
-  const [line, setLine] = useState("");
-  const run = async () => {
-    setBusy(true);
-    try {
-      const s = useApp.getState();
-      const media = await listMedia().catch(() => []);
-      setLine(
-        `Всё сохранено на этом устройстве ✓ · тренировок: ${s.sessions.length}, упражнений: ${s.exercises.length}, фото: ${media.length}`,
-      );
-      toast.success("Настройки сохранены");
-    } finally {
-      setBusy(false);
-    }
-  };
-  return (
-    <div className="space-y-2">
-      <TapButton className="min-h-[44px] w-full" disabled={busy} onClick={run}>
-        {busy ? "Сохраняю…" : "Сохранить настройки"}
-      </TapButton>
-      {line && (
-        <p role="status" className="text-center text-sm font-semibold text-primary-shade">
-          {line}
-        </p>
-      )}
-      <p className="text-center text-xs text-muted-foreground">
-        Вообще-то всё сохраняется автоматически при каждом изменении 🙂
-      </p>
-    </div>
+        Сбросить всё
+      </button>
+    </SectionCard>
   );
 }
