@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
   ArrowDown,
   ArrowUp,
@@ -99,24 +99,6 @@ function ProtectionBar() {
         <p className="text-xs font-semibold text-muted-foreground">заморозки</p>
       </div>
     </div>
-  );
-}
-
-/** Ссылка: параметры серии (x/n/y/порог) теперь на странице настроек. */
-function PlanSettingsLink() {
-  return (
-    <Link
-      to="/settings"
-      className="press flex min-h-[44px] items-center gap-2 rounded-2xl border-2 bg-card px-4 py-3 text-sm font-semibold hover:bg-muted"
-    >
-      <span className="flex-1">
-        Защита серии: доп-выходные, заморозки, порог
-        <span className="block text-xs font-normal text-muted-foreground">
-          Настраивается в настройках
-        </span>
-      </span>
-      <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-    </Link>
   );
 }
 
@@ -234,8 +216,7 @@ function PlanContent() {
           "План пуст — добавь шаги цикла."
         )}
       </p>
-      <PlanSettingsLink />
-      <p className="-mt-2 text-xs text-muted-foreground">
+      <p className="text-xs text-muted-foreground">
         Старт цикла: {new Date(s.plan.origin + "T12:00").toLocaleDateString("ru")}. Заморозки
         возвращает итог недели ≥ {s.plan.settings.freezeThresholdPct}% (квесты или план). Серия
         сейчас: {prog.streak} {prog.breakAt ? `(сломана ${prog.breakAt})` : ""}
