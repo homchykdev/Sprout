@@ -1,7 +1,19 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { Download, ImagePlus, Link2, MoreVertical, Pencil, Trash2, Upload, X } from "lucide-react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import {
+  Camera,
+  Check,
+  Columns2,
+  Download,
+  ImagePlus,
+  Link2,
+  MoreVertical,
+  Pencil,
+  Trash2,
+  Upload,
+  X,
+} from "lucide-react";
 import { LinkMedia } from "@/components/game/LinkMedia";
-import { PhotoCompareDialog } from "@/components/game/PhotoCompareDialog";
+import { PhotoCompare } from "@/components/game/PhotoCompare";
 import { PhotoEditDialog } from "@/components/game/PhotoEditDialog";
 import { PhotoGroupDialog } from "@/components/game/PhotoGroupDialog";
 import { PhotoLightbox } from "@/components/game/PhotoLightbox";
@@ -9,7 +21,7 @@ import { PhotoTile } from "@/components/game/PhotoTile";
 import { PhotoTimeline, type Group } from "@/components/game/PhotoTimeline";
 import { consumeLongPress, markLongPress, useLongPress } from "@/hooks/use-long-press";
 import { parseClips, parseLink } from "@/lib/embed";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -39,10 +51,12 @@ import {
   importMedia,
   removeMedia,
   ungroup,
+  useBlobUrl,
   useMedia,
   type Album,
   type MediaItem,
 } from "@/lib/media";
+import { STRAIN_LABEL, VIEW_LABEL, type PoseStrain, type PoseView } from "@/lib/pose";
 import { useApp } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
@@ -68,9 +82,37 @@ export const Route = createFileRoute("/gallery")({
 
 function Gallery() {
   const [album, setAlbum] = useState<Album>("progress");
+  const [compareMode, setCompareMode] = useState(false);
   return (
     <div className="space-y-4">
-      <h1 className="pt-2 text-3xl font-extrabold tracking-tight">Фото</h1>
+      <div className="flex items-center justify-between gap-2 pt-2">
+        <h1 className="text-3xl font-extrabold tracking-tight">Фото</h1>
+        <div className="flex gap-1">
+          <Link
+            to="/capture"
+            aria-label="Снять фото прогресса"
+            className="press flex h-11 w-11 items-center justify-center rounded-full bg-muted text-foreground transition-colors hover:bg-primary-soft"
+          >
+            <Camera className="h-5 w-5" />
+          </Link>
+          {album === "progress" && (
+            <button
+              type="button"
+              aria-label={compareMode ? "Выйти из сравнения" : "Сравнить фото"}
+              aria-pressed={compareMode}
+              onClick={() => setCompareMode((v) => !v)}
+              className={cn(
+                "press flex h-11 w-11 items-center justify-center rounded-full transition-colors",
+                compareMode
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted text-foreground hover:bg-primary-soft",
+              )}
+            >
+              <Columns2 className="h-5 w-5" />
+            </button>
+          )}
+        </div>
+      </div>
       <div
         className="flex rounded-full bg-muted p-1 text-sm font-semibold"
         role="tablist"
@@ -96,12 +138,24 @@ function Gallery() {
           </button>
         ))}
       </div>
-      <AlbumView album={album} />
+      <AlbumView
+        album={album}
+        compareMode={album === "progress" && compareMode}
+        onExitCompare={() => setCompareMode(false)}
+      />
     </div>
   );
 }
 
-export function AlbumView({ album }: { album: Album }) {
+export function AlbumView({
+  album,
+  compareMode = false,
+  onExitCompare,
+}: {
+  album: Album;
+  compareMode?: boolean;
+  onExitCompare?: () => void;
+}) {
   const items = useMedia(album);
   const ffmpegKey = useApp((s) => s.ffmpegKey);
   const ffmpegOptions = useApp((s) => s.ffmpegOptions);
@@ -115,11 +169,31 @@ export function AlbumView({ album }: { album: Album }) {
   const [sel, setSel] = useState<string[]>([]);
   const [groupOpen, setGroupOpen] = useState<string | null>(null);
   const [compare, setCompare] = useState<MediaItem[]>([]);
+  const [compareSel, setCompareSel] = useState<string[]>([]);
+  const [pickView, setPickView] = useState<PoseView | "all">("all");
+  const [pickStrain, setPickStrain] = useState<PoseStrain | "all">("all");
   const [delOpen, setDelOpen] = useState(false);
   const file = useRef<HTMLInputElement>(null);
   const arch = useRef<HTMLInputElement>(null);
 
   const allIds = (items ?? []).map((x) => x.id);
+  const shots = (items ?? []).filter((m) => m.kind === "image" && !!m.blob);
+  const hasPose = shots.some((m) => m.pose);
+  const hasStrain = shots.some((m) => m.strain);
+  const picked = shots.filter(
+    (m) =>
+      (pickView === "all" || m.pose === pickView) &&
+      (pickStrain === "all" || m.strain === pickStrain),
+  );
+  const selectedShots = shots.filter((m) => sel.includes(m.id)).length;
+
+  useEffect(() => {
+    if (compareMode) {
+      setSelecting(false);
+      setSel([]);
+      setCompareSel([]);
+    }
+  }, [compareMode]);
 
   const upload = async (fs: FileList | null) => {
     if (!fs?.length) return;
@@ -209,13 +283,30 @@ export function AlbumView({ album }: { album: Album }) {
     toast.success(`Группа из ${sel.length} фото создана`);
     exitSelect();
   };
-  const startCompare = () => {
+  const startCompare = (ids: string[] = sel) => {
     const list = (items ?? [])
-      .filter((x) => sel.includes(x.id))
+      .filter((x) => ids.includes(x.id) && x.kind === "image" && !!x.blob)
       .sort((a, b) => a.date.localeCompare(b.date) || a.createdAt - b.createdAt);
-    if (list.length !== 2) return;
-    setCompare(list as [MediaItem, MediaItem]);
+    if (list.length < 2) return;
+    setCompare(list);
+    setCompareSel([]);
     exitSelect();
+  };
+  const toggleCompare = (id: string) =>
+    setCompareSel((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  const allPickedSelected = picked.length > 0 && picked.every((m) => compareSel.includes(m.id));
+  const selectPickedAll = () =>
+    setCompareSel((prev) => {
+      const ids = picked.map((m) => m.id);
+      return allPickedSelected
+        ? prev.filter((id) => !ids.includes(id))
+        : [...new Set([...prev, ...ids])];
+    });
+  const exitCompareMode = () => {
+    setCompareSel([]);
+    setPickView("all");
+    setPickStrain("all");
+    onExitCompare?.();
   };
   const selectAll = () => setSel(sel.length === allIds.length ? [] : allIds);
   const doDelete = async () => {
@@ -227,36 +318,38 @@ export function AlbumView({ album }: { album: Album }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-2">
-        <TapButton className="flex-1" disabled={busy} onClick={() => file.current?.click()}>
-          <ImagePlus className="h-4 w-4" /> {busy ? "Сохраняю…" : "Загрузить"}
-        </TapButton>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <TapButton variant="soft" size="icon" aria-label="Ещё действия">
-              <MoreVertical className="h-5 w-5" />
-            </TapButton>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="min-w-56 rounded-2xl">
-            <DropdownMenuItem
-              className="min-h-[44px] text-[15px]"
-              onSelect={() => setLinkOpen(true)}
-            >
-              <Link2 className="h-4 w-4" /> Добавить по ссылке
-            </DropdownMenuItem>
-            <DropdownMenuItem className="min-h-[44px] text-[15px]" onSelect={() => void save()}>
-              <Download className="h-4 w-4" /> Сохранить архив
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              className="min-h-[44px] text-[15px]"
-              onSelect={() => arch.current?.click()}
-            >
-              <Upload className="h-4 w-4" /> Загрузить архив
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-      {selecting && (
+      {!compareMode && (
+        <div className="flex gap-2">
+          <TapButton className="flex-1" disabled={busy} onClick={() => file.current?.click()}>
+            <ImagePlus className="h-4 w-4" /> {busy ? "Сохраняю…" : "Загрузить"}
+          </TapButton>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <TapButton variant="soft" size="icon" aria-label="Ещё действия">
+                <MoreVertical className="h-5 w-5" />
+              </TapButton>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-56 rounded-2xl">
+              <DropdownMenuItem
+                className="min-h-[44px] text-[15px]"
+                onSelect={() => setLinkOpen(true)}
+              >
+                <Link2 className="h-4 w-4" /> Добавить по ссылке
+              </DropdownMenuItem>
+              <DropdownMenuItem className="min-h-[44px] text-[15px]" onSelect={() => void save()}>
+                <Download className="h-4 w-4" /> Сохранить архив
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="min-h-[44px] text-[15px]"
+                onSelect={() => arch.current?.click()}
+              >
+                <Upload className="h-4 w-4" /> Загрузить архив
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      )}
+      {selecting && !compareMode && (
         <div className="card-soft animate-pop space-y-2.5 p-3">
           <div className="flex items-center gap-2">
             <span className="flex-1 text-sm font-semibold tabular">Выбрано: {sel.length}</span>
@@ -280,8 +373,8 @@ export function AlbumView({ album }: { album: Album }) {
               size="sm"
               variant="soft"
               className="min-h-[44px]"
-              disabled={sel.length !== 2}
-              onClick={startCompare}
+              disabled={selectedShots < 2}
+              onClick={() => startCompare()}
             >
               Сравнить
             </TapButton>
@@ -295,9 +388,9 @@ export function AlbumView({ album }: { album: Album }) {
               <Trash2 className="h-4 w-4" /> Удалить
             </TapButton>
           </div>
-          {sel.length === 1 && (
+          {sel.length >= 1 && selectedShots < 2 && (
             <p className="text-xs text-muted-foreground">
-              Выбери ещё одно фото, чтобы сравнить «до / после».
+              Выбери минимум два фото, чтобы сравнить «до / после».
             </p>
           )}
         </div>
@@ -331,7 +424,89 @@ export function AlbumView({ album }: { album: Album }) {
         }}
       />
 
-      {items === null ? (
+      {compareMode ? (
+        <div className="space-y-3">
+          <div className="card-soft animate-pop space-y-2.5 p-3">
+            <div className="flex items-center gap-2">
+              <span className="flex-1 text-sm font-semibold tabular">
+                Выбрано: {compareSel.length}
+              </span>
+              <TapButton
+                variant="ghost"
+                size="icon"
+                aria-label="Закрыть сравнение"
+                onClick={exitCompareMode}
+              >
+                <X className="h-5 w-5" />
+              </TapButton>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              2 фото — шторка «было / стало», 3 и больше — быстрое перелистывание.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <TapButton
+                size="sm"
+                className="min-h-[44px]"
+                disabled={compareSel.length < 2}
+                onClick={() => startCompare(compareSel)}
+              >
+                <Columns2 className="h-4 w-4" /> Сравнить
+              </TapButton>
+              <TapButton
+                size="sm"
+                variant="soft"
+                className="min-h-[44px]"
+                disabled={!picked.length}
+                onClick={selectPickedAll}
+              >
+                {allPickedSelected ? "Снять выбор" : "Выбрать всё"}
+              </TapButton>
+            </div>
+          </div>
+
+          {hasPose && (
+            <div className="flex gap-2 overflow-x-auto pb-1" aria-label="Фильтр по ракурсу">
+              <FilterChip active={pickView === "all"} onClick={() => setPickView("all")}>
+                Все ракурсы
+              </FilterChip>
+              {(["front", "side", "back"] as const).map((v) => (
+                <FilterChip key={v} active={pickView === v} onClick={() => setPickView(v)}>
+                  {VIEW_LABEL[v]}
+                </FilterChip>
+              ))}
+            </div>
+          )}
+          {hasStrain && (
+            <div className="flex gap-2 overflow-x-auto pb-1" aria-label="Фильтр по напряжению">
+              <FilterChip active={pickStrain === "all"} onClick={() => setPickStrain("all")}>
+                Любая поза
+              </FilterChip>
+              {(["relaxed", "flexed"] as const).map((v) => (
+                <FilterChip key={v} active={pickStrain === v} onClick={() => setPickStrain(v)}>
+                  {STRAIN_LABEL[v]}
+                </FilterChip>
+              ))}
+            </div>
+          )}
+
+          {picked.length ? (
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+              {picked.map((m) => (
+                <ComparePick
+                  key={m.id}
+                  m={m}
+                  selected={compareSel.includes(m.id)}
+                  onToggle={() => toggleCompare(m.id)}
+                />
+              ))}
+            </div>
+          ) : (
+            <p className="py-10 text-center text-sm text-muted-foreground">
+              Нет фото под выбранный фильтр. Сбрось ракурс или сними новый кадр.
+            </p>
+          )}
+        </div>
+      ) : items === null ? (
         <div className="grid grid-cols-2 gap-3" aria-label="Загрузка фото">
           {[0, 1, 2, 3].map((i) => (
             <Skeleton key={i} className="aspect-[3/4] w-full rounded-2xl" />
@@ -346,6 +521,14 @@ export function AlbumView({ album }: { album: Album }) {
               : "Добавь фото фигуры мечты"}
           </p>
           <p className="text-sm text-muted-foreground">Всё хранится только на этом устройстве.</p>
+          {album === "progress" && (
+            <Link
+              to="/capture"
+              className="press mt-2 inline-flex h-12 items-center gap-2 rounded-2xl bg-primary px-5 text-[15px] font-semibold text-primary-foreground shadow-[0_4px_0_var(--primary-shade)]"
+            >
+              <Camera className="h-4 w-4" /> Снять в позе
+            </Link>
+          )}
         </div>
       ) : album === "progress" ? (
         <>
@@ -420,7 +603,7 @@ export function AlbumView({ album }: { album: Album }) {
           }
         }}
       />
-      <PhotoCompareDialog items={compare} onClose={() => setCompare([])} />
+      <PhotoCompare items={compare} onClose={() => setCompare([])} />
       <LinkDialog open={linkOpen} album={album} onClose={() => setLinkOpen(false)} />
 
       <AlertDialog open={ungroupId != null} onOpenChange={(o) => !o && setUngroupId(null)}>
@@ -470,6 +653,78 @@ export function AlbumView({ album }: { album: Album }) {
         </AlertDialogContent>
       </AlertDialog>
     </div>
+  );
+}
+
+const fmtShort = (d: string) =>
+  new Date(d + "T00:00").toLocaleDateString("ru", { day: "numeric", month: "short" });
+
+/** Compare-mode cell: tap toggles the photo. */
+function ComparePick({
+  m,
+  selected,
+  onToggle,
+}: {
+  m: MediaItem;
+  selected: boolean;
+  onToggle: () => void;
+}) {
+  const url = useBlobUrl(m.blob);
+  return (
+    <button
+      type="button"
+      aria-pressed={selected}
+      aria-label={`${m.title || "Фото"} · ${fmtShort(m.date)}`}
+      onClick={onToggle}
+      className={cn(
+        "press relative aspect-[3/4] overflow-hidden rounded-xl bg-muted text-left ring-2 transition-[box-shadow,transform]",
+        selected ? "ring-primary" : "ring-transparent",
+      )}
+    >
+      {url ? (
+        <img src={url} alt="" draggable={false} className="h-full w-full object-cover" />
+      ) : (
+        <Skeleton className="h-full w-full rounded-none" />
+      )}
+      <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 to-transparent p-1.5 text-[11px] font-semibold text-white">
+        {fmtShort(m.date)}
+        {m.pose && (
+          <span className="block truncate font-medium text-white/75">
+            {VIEW_LABEL[m.pose]}
+            {m.strain ? ` · ${STRAIN_LABEL[m.strain]}` : ""}
+          </span>
+        )}
+      </span>
+      {selected && (
+        <span className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground shadow">
+          <Check className="h-4 w-4" />
+        </span>
+      )}
+    </button>
+  );
+}
+
+function FilterChip({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      className={cn(
+        "h-11 shrink-0 rounded-full px-3.5 text-sm font-semibold transition-colors",
+        active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground",
+      )}
+    >
+      {children}
+    </button>
   );
 }
 
