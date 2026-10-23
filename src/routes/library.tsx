@@ -67,7 +67,7 @@ export function LibraryContent() {
           onClick={() =>
             ai.keys.length
               ? setAiOpen(true)
-              : toast("Добавьте ИИ-ключ в Профиле")
+              : toast("Добавьте ИИ-ключ в Настройках")
           }
         >
           <Sparkles className="h-4 w-4" /> ИИ

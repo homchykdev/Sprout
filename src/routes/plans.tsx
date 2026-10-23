@@ -70,7 +70,7 @@ function Plans() {
           </button>
         ))}
       </div>
-      {tab === "plan" ? <PlanContent /> : <PlansContent hidden={tab === "exercises"} />}
+      {tab === "plan" ? <PlanContent /> : tab === "exercises" ? <LibraryContent /> : <PlansContent />}
     </div>
   );
 }
@@ -277,7 +277,7 @@ function PlanStepAdder() {
   );
 }
 
-function PlansContent({ hidden }: { hidden: boolean }) {
+function PlansContent() {
   const s = useApp();
   const nav = useNavigate();
   const [edit, setEdit] = useState<Workout | null>(null);
@@ -294,7 +294,7 @@ function PlansContent({ hidden }: { hidden: boolean }) {
   }
 
   return (
-    <div className={cn(hidden && "hidden")}>
+    <div>
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-bold">Мои тренировки</h2>
         <div className="flex gap-2">
@@ -302,7 +302,7 @@ function PlansContent({ hidden }: { hidden: boolean }) {
             size="sm"
             variant="flame"
             onClick={() =>
-              s.ai.keys.length ? setAiOpen(true) : toast("Добавьте ИИ-ключ в Профиле")
+              s.ai.keys.length ? setAiOpen(true) : toast("Добавьте ИИ-ключ в Настройках")
             }
           >
             <Sparkles className="h-4 w-4" /> ИИ
