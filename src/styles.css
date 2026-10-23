@@ -240,6 +240,41 @@
 @utility animate-rise {
   animation: rise 0.6s var(--ease-smooth) both;
 }
+/* Collapsible settings groups: transform/opacity only; height snaps, content fades in.
+   Overrides the height-based accordion keyframes of the shadcn component. */
+@keyframes group-in {
+  0% {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes group-out {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+[data-state="open"].animate-accordion-down {
+  animation-name: group-in;
+  animation-duration: 0.2s;
+  animation-timing-function: var(--ease-smooth);
+}
+[data-state="closed"].animate-accordion-up {
+  animation-name: group-out;
+  animation-duration: 0.12s;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-state="open"].animate-accordion-down,
+  [data-state="closed"].animate-accordion-up {
+    animation: none;
+  }
+}
 @utility animate-float {
   animation: float 3.2s ease-in-out infinite;
 }

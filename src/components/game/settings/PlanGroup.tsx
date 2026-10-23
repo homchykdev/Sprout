@@ -1,5 +1,6 @@
 import { Input } from "@/components/ui/input";
 import type { PlanSettings } from "@/lib/plan";
+import { sliceChanged } from "@/lib/settings-draft";
 import { SectionCard } from "./SectionCard";
 import { useSettingsDraft } from "./draft-context";
 
@@ -7,8 +8,9 @@ type PlanSettingsKey = keyof PlanSettings;
 
 /** Moved in from the /plans tab: x / n / y / недельный порог; drafts until saved. */
 export function PlanGroup() {
-  const { draft, updatePlanSettings } = useSettingsDraft();
+  const { draft, entry, updatePlanSettings } = useSettingsDraft();
   const st = draft.planSettings;
+  const changed = sliceChanged(st, entry.planSettings);
   const rows: { key: PlanSettingsKey; label: string; hint: string; min: number; max: number }[] = [
     {
       key: "bonusMax",
@@ -43,6 +45,7 @@ export function PlanGroup() {
     <SectionCard
       title="План и серия"
       hint="Пропущенный 1-й и 2-й день тратят доп-выходной, с 3-го — заморозки. Отдых и отпуск — безопасны."
+      changed={changed}
     >
       {rows.map(({ key, label, hint, min, max }) => (
         <label key={key} className="flex items-center gap-3">

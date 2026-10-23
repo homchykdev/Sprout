@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { toast } from "sonner";
+import { sliceChanged } from "@/lib/settings-draft";
 import { SectionCard, field } from "./SectionCard";
 import { useSettingsDraft } from "./draft-context";
 import { ApiCheck } from "./ApiCheck";
@@ -16,10 +17,18 @@ import {
 
 /** Cloud video transcode settings; everything waits for the save button. */
 export function VideoGroup() {
-  const { draft, update, dirty } = useSettingsDraft();
+  const { draft, entry, update, dirty } = useSettingsDraft();
   const [scale, setScale] = useState<FfmpegScale>("1080p");
   const [fps, setFps] = useState("60");
   const [codec, setCodec] = useState<FfmpegCodec>("av1-cpu");
+  const changed = sliceChanged(
+    { ffmpegKey: draft.ffmpegKey, ffmpegOptions: draft.ffmpegOptions, ffmpegOut: draft.ffmpegOut },
+    {
+      ffmpegKey: entry.ffmpegKey,
+      ffmpegOptions: entry.ffmpegOptions,
+      ffmpegOut: entry.ffmpegOut,
+    },
+  );
   // Null = not editing: textarea mirrors the draft; any keystroke takes over.
   const [cmdDraft, setCmdDraft] = useState<string | null>(null);
   const cmd = cmdDraft ?? joinFfmpegCmd(draft.ffmpegOptions);
@@ -48,7 +57,7 @@ export function VideoGroup() {
 
   const select = "rounded-xl border-2 bg-card px-3 py-2 text-sm font-semibold";
   return (
-    <SectionCard title="Видео: перекодирование">
+    <SectionCard title="Видео: перекодирование" changed={changed}>
       <input
         className={field}
         type="password"
@@ -147,7 +156,7 @@ export function VideoGroup() {
           </button>
         </div>
       </div>
-      {dirty && (
+      {changed && (
         <p className="text-xs text-muted-foreground">
           Изменения ждут «Сохранить настройки» внизу экрана.
         </p>

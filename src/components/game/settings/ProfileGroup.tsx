@@ -1,12 +1,19 @@
+import { sliceChanged } from "@/lib/settings-draft";
 import { SectionCard, field } from "./SectionCard";
 import { useSettingsDraft } from "./draft-context";
 import { VacationButton } from "@/components/game/VacationButton";
 
 /** Name + vacation mode (same dialog as the header button). */
 export function ProfileGroup() {
-  const { draft, update } = useSettingsDraft();
+  const { draft, entry, update } = useSettingsDraft();
+  const changed = sliceChanged({ name: draft.name }, { name: entry.name });
   return (
-    <SectionCard title="Профиль" hint="Имя видно на профиле и в подсказках Огонёка.">
+    <SectionCard
+      title="Профиль"
+      hint="Имя видно на профиле и в подсказках Огонёка."
+      defaultOpen
+      changed={changed}
+    >
       <input
         className={field}
         placeholder="Как тебя зовут?"

@@ -5,6 +5,7 @@ import { TapButton } from "@/components/game/TapButton";
 import { maskKey } from "@/lib/ai-keys";
 import { checkAiKeys } from "@/lib/clients";
 import { cn } from "@/lib/utils";
+import { sliceChanged } from "@/lib/settings-draft";
 import { SectionCard, field } from "./SectionCard";
 import { useSettingsDraft } from "./draft-context";
 import { ApiCheck } from "./ApiCheck";
@@ -65,12 +66,14 @@ function AiKeys() {
 }
 
 export function AiGroup() {
-  const { draft, updateAi, dirty } = useSettingsDraft();
+  const { draft, entry, updateAi, dirty } = useSettingsDraft();
   const ai = draft.ai;
+  const changed = sliceChanged(ai, entry.ai);
   return (
     <SectionCard
       title="ИИ-помощник"
       hint="ИИ создаёт и улучшает упражнения и составляет тренировки. Ключи хранятся только на устройстве."
+      changed={changed}
     >
       <div
         className="flex rounded-2xl bg-muted p-1 text-sm font-semibold"
@@ -118,7 +121,7 @@ export function AiGroup() {
         check={() => checkAiKeys(ai)}
         disabled={ai.keys.length === 0}
       />
-      {dirty && (
+      {changed && (
         <p className="text-xs text-muted-foreground">
           Проверка идёт по черновику — нажми «Сохранить», чтобы ключи начали работать.
         </p>

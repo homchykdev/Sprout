@@ -5,13 +5,15 @@ import { Slider } from "@/components/ui/slider";
 import { TapButton } from "@/components/game/TapButton";
 import { listVoices, primeAudio, beep, fanfare, speak } from "@/lib/voice";
 import { cn } from "@/lib/utils";
+import { sliceChanged } from "@/lib/settings-draft";
 import { SectionCard, selectField } from "./SectionCard";
 import { useSettingsDraft } from "./draft-context";
 
 /** Sound and voice — moved from SettingsExtras, now drafts until saved. */
 export function SoundGroup() {
-  const { draft, updateVoice } = useSettingsDraft();
+  const { draft, entry, updateVoice } = useSettingsDraft();
   const v = draft.voice;
+  const changed = sliceChanged(v, entry.voice);
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   useEffect(() => {
     if (typeof speechSynthesis === "undefined") return;
@@ -23,7 +25,7 @@ export function SoundGroup() {
   const row = "flex items-center justify-between gap-3";
 
   return (
-    <SectionCard title="Звук и голос">
+    <SectionCard title="Звук и голос" changed={changed}>
       <div className={row}>
         <span>Голосовые подсказки</span>
         <Switch checked={v.enabled} onCheckedChange={(x) => updateVoice({ enabled: x })} />

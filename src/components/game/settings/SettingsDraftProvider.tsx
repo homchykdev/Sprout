@@ -33,7 +33,17 @@ export function SettingsDraftProvider({ children }: { children: ReactNode }) {
 
   return (
     <SettingsDraftContext.Provider
-      value={{ draft, dirty, update, updateVoice, updateAi, updatePlanSettings, save, discard }}
+      value={{
+        draft,
+        entry: baseline.current,
+        dirty,
+        update,
+        updateVoice,
+        updateAi,
+        updatePlanSettings,
+        save,
+        discard,
+      }}
     >
       {children}
     </SettingsDraftContext.Provider>

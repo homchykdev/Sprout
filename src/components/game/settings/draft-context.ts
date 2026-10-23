@@ -7,6 +7,8 @@ import type { VoiceSettings } from "@/lib/store";
 /** Mutable settings draft: controls edit the snapshot, the store only on an explicit save. */
 export interface SettingsDraftApi {
   draft: SettingsDraft;
+  /** Store snapshot taken when the page was opened; the baseline for `dirty`. */
+  entry: SettingsDraft;
   dirty: boolean;
   update: (patch: Partial<SettingsDraft>) => void;
   updateVoice: (patch: Partial<VoiceSettings>) => void;

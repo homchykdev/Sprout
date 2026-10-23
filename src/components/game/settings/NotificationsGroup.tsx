@@ -5,6 +5,7 @@ import { TapButton } from "@/components/game/TapButton";
 import { notify } from "@/components/game/useReminders";
 import { usePhotoDue } from "@/hooks/usePhotoReminder";
 import { PHOTO_INTERVALS, nextPhotoDate, reminderMessage } from "@/lib/photo-reminders";
+import { sliceChanged } from "@/lib/settings-draft";
 import { SectionCard, selectField } from "./SectionCard";
 import { useSettingsDraft } from "./draft-context";
 
@@ -25,13 +26,17 @@ async function askNotificationPermission(): Promise<boolean> {
 
 /** Workout and progress-photo reminders in one card; changes wait for the save button. */
 export function NotificationsGroup() {
-  const { draft, update } = useSettingsDraft();
+  const { draft, entry, update } = useSettingsDraft();
   const photo = usePhotoDue();
   const nextPhoto = nextPhotoDate(photo.lastDate, draft.photoReminder);
   const pr = draft.photoReminder;
+  const changed = sliceChanged(
+    { reminders: draft.reminders, photoReminder: draft.photoReminder },
+    { reminders: entry.reminders, photoReminder: entry.photoReminder },
+  );
 
   return (
-    <SectionCard title="Уведомления">
+    <SectionCard title="Уведомления" changed={changed}>
       <div className="flex items-center justify-between">
         <span>Напоминать о тренировках</span>
         <Switch

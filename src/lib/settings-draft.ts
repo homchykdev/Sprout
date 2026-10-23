@@ -65,3 +65,8 @@ function eq(a: unknown, b: unknown): boolean {
 export function isDraftDirty(a: SettingsDraft, b: SettingsDraft): boolean {
   return !eq(a, b);
 }
+
+/** Structural comparison of a single group slice (weakly typed on purpose — see groups). */
+export function sliceChanged(a: unknown, b: unknown): boolean {
+  return !eq(a, b);
+}
