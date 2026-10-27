@@ -118,7 +118,7 @@ export function ArticleImportTab({ onClose }: { onClose: () => void }) {
           <input
             aria-label="Ссылка на статью"
             className="h-12 w-full rounded-2xl border-2 px-4 outline-none focus:border-primary"
-            placeholder="Ссылка на статью, напр. https://fitstars.ru/blog/…"
+            placeholder="Введите ссылку на статью"
             value={url}
             onChange={(e) => {
               setUrl(e.target.value);

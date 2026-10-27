@@ -83,6 +83,47 @@ describe("cleanArticleText", () => {
     expect(text.match(/\[\[media-1\]\]/g)?.length).toBe(2);
   });
 
+  it("treats lazy data-href video placeholders as media but not share buttons", () => {
+    const html = `<body>
+      <h2>Приседания</h2>
+      <p><span class="article__video__link js-insert-video" data-href="https://youtu.be/zCefQs3d8gY" data-video-id=""></span></p>
+      <p>Приседайте 15–20 раз.</p>
+      <h2>Растяжка</h2>
+      <p><span data-href="https://youtu.be/nGdM2qRr8P4"></span><div class="lazypic" data-src="/img/plank.gif"></div></p>
+      <p>Держите корпус.</p>
+      <img src="/img/logo.svg" width="40" height="40" alt="логотип">
+      <img src="/img/count.gif" width="1" height="1" alt="">
+      <div class="vk-share" data-href="https://style.example.ru/article/123"></div>
+    </body>`;
+    const { text, media } = cleanArticleText(html, "https://style.example.ru/health/1");
+    expect(text).toMatch(/## Приседания[\s\S]*?\[\[media-1\]\]/);
+    expect(text).toMatch(/## Растяжка[\s\S]*?\[\[media-2\]\]/);
+    expect(media.map((m) => [m.url, m.kind])).toEqual([
+      ["https://youtu.be/zCefQs3d8gY", "youtube"],
+      ["https://youtu.be/nGdM2qRr8P4", "youtube"],
+      ["https://style.example.ru/img/plank.gif", "image"],
+    ]);
+    expect(text).not.toContain("style.example.ru/health/1");
+  });
+
+  it("skips svg icons and 1px counters everywhere", () => {
+    const html = `<body>
+      <h2>Планка</h2>
+      <iframe src="https://www.svg-player.ru/embed/x"></iframe>
+      <img src="https://x.ru/pix.gif" width="0" height="0" alt="0">
+      <p>Держите корпус прямо.</p>
+    </body>`;
+    const { media } = cleanArticleText(html, "https://x.ru");
+    expect(media).toEqual([{ url: "https://www.svg-player.ru/embed/x", kind: "iframe" }]);
+  });
+
+  it("skips svg logos from lazy attributes too", () => {
+    const html = `<body><h2>A</h2><div data-src="https://x.ru/logo.svg"></div><p>текст</p></body>`;
+    const { media, text } = cleanArticleText(html, "https://x.ru");
+    expect(media).toEqual([]);
+    expect(text).not.toContain("[[media-");
+  });
+
   it("gives up on boilerplate-only pages", () => {
     const html = `<body><nav><p>menu</p><img src="/x.gif"></nav><footer>copyright</footer></body>`;
     expect(cleanArticleText(html, "https://x.ru")).toEqual({ text: "", media: [] });

@@ -40,6 +40,36 @@ function videoSrc(el: ParsedElement): string {
   return el.getAttribute("src") ?? el.querySelector("source")?.getAttribute("src") ?? "";
 }
 
+/**
+ * Lazy video placeholders (e.g. a span replaced by the site's JS with a real
+ * player only on scroll) keep the target in data-href / data-src attributes.
+ * They count as media only when the URL clearly points to a video provider or
+ * file — this avoids articles' share buttons (they also use data-href).
+ */
+const LAZY_VIDEO_HINT = /youtu|vimeo|kinescope|rutube|vkvideo|video|player|\.(?:mp4|webm|mov|m4v)/i;
+const LAZY_IMAGE_HINT = /\.(?:jpe?g|png|gif|webp|avif)$/i;
+
+function lazyMediaAttr(el: ParsedElement): string | "" {
+  const href = el.getAttribute("data-href") ?? "";
+  if (href) {
+    try {
+      if (LAZY_VIDEO_HINT.test(new URL(href, "https://x.invalid").href)) return href;
+    } catch {
+      /* ignore */
+    }
+  }
+  const src = el.getAttribute("data-src") ?? "";
+  if (src && !/^data:/i.test(src)) {
+    try {
+      const u = new URL(src, "https://x.invalid");
+      if (LAZY_IMAGE_HINT.test(u.pathname) || LAZY_VIDEO_HINT.test(u.href)) return src;
+    } catch {
+      /* ignore */
+    }
+  }
+  return "";
+}
+
 function oneLine(s: string): string {
   return s
     .replace(/[^\S\n]+/g, " ")
@@ -74,9 +104,25 @@ export function cleanArticleText(
       return "";
     }
   };
-  const marker = (src: string): string => {
+  /** Icons/logos, pixel counters and spacing gifs are decoration, never exercise media. */
+  const JUNK_PATH = /\.(?:svg|ico)$|counter|pixel|beacon|spacer|blank\.|1x1/i;
+  const junkMedia = (u: URL, width?: string | null, height?: string | null): boolean =>
+    JUNK_PATH.test(u.pathname) ||
+    !!(width != null && Number(width) <= 3) ||
+    !!(height != null && Number(height) <= 3);
+  const marker = (
+    src: string,
+    dumbSize?: { width?: string | null | undefined; height?: string | null | undefined },
+  ): string => {
     const url = abs(src);
     if (!url) return "";
+    let u: URL;
+    try {
+      u = new URL(url);
+    } catch {
+      return "";
+    }
+    if (junkMedia(u, dumbSize?.width, dumbSize?.height)) return "";
     const known = byUrl.get(url);
     if (known != null) return `[[media-${known}]]`;
     if (media.length >= maxMedia) return "";
@@ -96,20 +142,29 @@ export function cleanArticleText(
       if (isHidden(node)) continue;
       if (tag === "br") text += "\n";
       else if (tag === "img")
-        text += marker(node.getAttribute("src") ?? node.getAttribute("data-src") ?? "");
+        text += marker(node.getAttribute("src") ?? node.getAttribute("data-src") ?? "", {
+          width: node.getAttribute("width"),
+          height: node.getAttribute("height"),
+        });
       else if (tag === "video") text += marker(videoSrc(node));
       else if (tag === "iframe") text += marker(node.getAttribute("src") ?? "");
-      else if (HEADING.test(tag)) {
-        text += "\n\n## ";
-        walk(node);
-        text += "\n";
-      } else if (tag === "li") {
-        text += "\n• ";
-        walk(node);
-      } else if (["p", "ul", "ol", "table", "tr", "blockquote"].includes(tag)) {
-        walk(node);
-        text += "\n";
-      } else walk(node);
+      else {
+        // Lazy placeholder (span/div + data-href/data-src) standing in for the
+        // real player/picture: emit its media marker before the block's text.
+        const lazy = lazyMediaAttr(node);
+        if (lazy) text += marker(lazy);
+        if (HEADING.test(tag)) {
+          text += "\n\n## ";
+          walk(node);
+          text += "\n";
+        } else if (tag === "li") {
+          text += "\n• ";
+          walk(node);
+        } else if (["p", "ul", "ol", "table", "tr", "blockquote"].includes(tag)) {
+          walk(node);
+          text += "\n";
+        } else walk(node);
+      }
     }
   };
   walk(root.querySelector("body") ?? root);
@@ -192,7 +247,7 @@ export function articlePrompt(text: string): string {
     "Правила:",
     `1. muscles — ТОЛЬКО из списка: ${Object.keys(MUSCLES).join(", ")}; первая — основная.`,
     "2. Включай только тренировочные упражнения по заголовкам и описаниям. Рекламу, анатомию, советы, FAQ и прочие блоки без конкретной техники пропускай.",
-    "3. media — номера маркеров, которые показывают ИМЕННО это упражнение (видео сразу после его заголовка или его фото). Общие иллюстрации статьи не указывай. Если верных маркеров нет — пустой массив.",
+    "3. media — номера маркеров, которые показывают ИМЕННО это упражнение (видео сразу после его заголовка или его фото). Общие иллюстрации статьи не указывай. Если верных маркеров нет — пустой массив. Если у упражнения есть и видео, и фото — ставь видео первым.",
     "4. mode=reps для подсчёта повторов, mode=time для удержаний/планок/кардио. Число повторов или секунд бери из статьи; если не указано — reps 12 или seconds 40.",
     "5. steps — 3–8 шагов техники на русском по описанию статьи; description — одно короткое предложение; mistakes — 2–4 частые ошибки.",
     '6. Если в статье нет упражнений, верни {"exercises":[]}.',
