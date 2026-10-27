@@ -185,7 +185,7 @@ function Player() {
 
   return (
     <div className="mx-auto flex min-h-screen max-w-xl flex-col">
-      <div className="flex items-center gap-4 px-5 pb-3 pt-5">
+      <div className="flex items-center gap-4 px-5 pb-3 pt-[max(1.25rem,env(safe-area-inset-top))]">
         <button
           onClick={() => setQuit(true)}
           aria-label="Выйти"

@@ -54,7 +54,7 @@ function Chrome({ children, pathname }: { children: ReactNode; pathname: string 
   const lv = level(s.xp);
   return (
     <div className="mx-auto min-h-screen max-w-xl">
-      <header className="glass sticky top-0 z-30 flex items-center justify-between px-5 py-3">
+      <header className="glass sticky top-[env(safe-area-inset-top)] z-30 flex items-center justify-between px-5 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
         <div className="flex items-center gap-2">
           <span className="flex items-center gap-1.5 rounded-full bg-flame-soft px-3 py-1.5 text-sm font-bold text-flame-shade tabular">
             <span className={cn(st > 0 && "animate-flicker")}>🔥</span>
