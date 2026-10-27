@@ -66,7 +66,7 @@ export function Onboarding() {
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-background">
       {/* top bar: progress dots + exit */}
-      <header className="flex items-center justify-center gap-3 px-5 pb-1 pt-5">
+      <header className="relative flex items-center justify-center gap-3 px-5 pb-1 pt-5">
         <div className="flex items-center gap-2" aria-label={`Шаг ${step + 1} из ${STEPS.length}`}>
           {STEPS.map((_, i) => (
             <span
@@ -81,7 +81,7 @@ export function Onboarding() {
         </div>
         <button
           aria-label="Выйти из настройки"
-          className="press absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground hover:bg-muted"
+          className="press absolute right-4 top-4 z-10 flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground hover:bg-muted"
           onClick={() => setConfirmExit(true)}
         >
           <X className="h-5 w-5" />
@@ -106,11 +106,15 @@ export function Onboarding() {
             </TapButton>
           )}
           {!last && (
-            <TapButton variant="ghost" size="md" onClick={finish} className="ml-auto">
-              Пропустить всё
+            <TapButton variant="ghost" size="md" onClick={next} className={cn("mr-0 ml-auto", step === 0 && "hidden")}>
+              Пропустить
             </TapButton>
           )}
-          <TapButton size="md" onClick={last ? finish : next} className={last ? "w-full" : ""}>
+          <TapButton
+            size="md"
+            onClick={last ? finish : next}
+            className={cn("whitespace-nowrap", last || step === 0 ? "w-full" : "ml-auto")}
+          >
             {step === 0 || last ? "Начать" : "Дальше"}
           </TapButton>
         </div>
