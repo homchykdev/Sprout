@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const askWithKeys = vi.fn();
-vi.mock("../ai.functions", () => ({ askWithKeys: ( ...a: unknown[]) => askWithKeys(...a) }));
+vi.mock("../ai.functions", () => ({ askWithKeys: (...a: unknown[]) => askWithKeys(...a) }));
 
 // Import AFTER the mock so the server fn does not need a real runtime.
 import { cleanArticleText, parseArticleResponse } from "../article";
@@ -50,7 +50,14 @@ describe("article pipeline (composition of the real handler steps)", () => {
       }),
       keyIndex: 0,
     });
-    const { text: modelText, keyIndex } = await askWithKeys("gemini", ["k"], undefined, "m", "s", "p");
+    const { text: modelText, keyIndex } = await askWithKeys(
+      "gemini",
+      ["k"],
+      undefined,
+      "m",
+      "s",
+      "p",
+    );
     void text;
     const exercises = parseArticleResponse(modelText, media);
     expect(keyIndex).toBe(0);

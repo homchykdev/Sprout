@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { maskKey, promoteKey } from "../ai-keys";
-import { articleExercise, buildWorkoutFromExercises, buildWorkoutFromSplit, clampSets, clampTempoBpm, mapMuscles, type ArticleExercise } from "../clients";
+import {
+  articleExercise,
+  buildWorkoutFromExercises,
+  buildWorkoutFromSplit,
+  clampSets,
+  clampTempoBpm,
+  mapMuscles,
+  type ArticleExercise,
+} from "../clients";
 import { migrateState } from "../store";
 import type { Exercise } from "../types";
 
