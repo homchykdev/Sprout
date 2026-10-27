@@ -25,7 +25,7 @@ async function call(path: string, apiKey: string, init?: RequestInit) {
 
 /** Cheap health check: lists directories, spends no conversion quota. */
 export const ffmpegPing = createServerFn({ method: "POST" })
-  .inputValidator((d) => z.object({ apiKey: Key }).parse(d))
+  .validator((d) => z.object({ apiKey: Key }).parse(d))
   .handler(async ({ data }) => {
     const t = Date.now();
     await call("/directory", data.apiKey, { method: "GET" });
@@ -34,7 +34,7 @@ export const ffmpegPing = createServerFn({ method: "POST" })
 
 /** Registers a file and returns the presigned upload URL (bytes go there client-side). */
 export const ffmpegRegister = createServerFn({ method: "POST" })
-  .inputValidator((d) => z.object({ apiKey: Key, fileName: z.string().min(1).max(120) }).parse(d))
+  .validator((d) => z.object({ apiKey: Key, fileName: z.string().min(1).max(120) }).parse(d))
   .handler(async ({ data }) => {
     const r = await call("/file", data.apiKey, {
       method: "POST",
@@ -61,7 +61,7 @@ const ConvertInput = z.object({
  * Returns a direct download URL of the converted file.
  */
 export const ffmpegConvert = createServerFn({ method: "POST" })
-  .inputValidator((d) => ConvertInput.parse(d))
+  .validator((d) => ConvertInput.parse(d))
   .handler(async ({ data }) => {
     const r = await call("/ffmpeg/process", data.apiKey, {
       method: "POST",

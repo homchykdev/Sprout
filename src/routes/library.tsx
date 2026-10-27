@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Plus, Search, Sparkles, Trash2 } from "lucide-react";
+import { Plus, Search, Sparkles, Trash2, Youtube } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -45,6 +45,9 @@ export function LibraryContent() {
   const [cat, setCat] = useState<Category | "all">("all");
   const [edit, setEdit] = useState<Exercise | null>(null);
   const [aiOpen, setAiOpen] = useState(false);
+  const [ytOpen, setYtOpen] = useState(false);
+  const needsKeys = (open: () => void) => () =>
+    ai.keys.length ? open() : toast("Добавьте ИИ-ключ в Настройках");
 
   const list = useMemo(
     () =>
@@ -61,15 +64,10 @@ export function LibraryContent() {
         <TapButton size="sm" onClick={() => setEdit(blankExercise())}>
           <Plus className="h-4 w-4" /> Своё
         </TapButton>
-        <TapButton
-          size="sm"
-          variant="flame"
-          onClick={() =>
-            ai.keys.length
-              ? setAiOpen(true)
-              : toast("Добавьте ИИ-ключ в Настройках")
-          }
-        >
+        <TapButton size="sm" variant="sky" onClick={needsKeys(() => setYtOpen(true))}>
+          <Youtube className="h-4 w-4" /> Из YouTube
+        </TapButton>
+        <TapButton size="sm" variant="flame" onClick={needsKeys(() => setAiOpen(true))}>
           <Sparkles className="h-4 w-4" /> ИИ
         </TapButton>
       </div>
@@ -136,6 +134,7 @@ export function LibraryContent() {
           setEdit(e);
         }}
       />
+      <AiYoutubeDialog open={ytOpen} onClose={() => setYtOpen(false)} />
     </div>
   );
 }
@@ -149,28 +148,26 @@ function AiDialog({
   onClose: () => void;
   onDone: (e: Exercise) => void;
 }) {
-  const [tab, setTab] = useState<"text" | "yt">("text");
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-h-[85vh] overflow-y-auto rounded-3xl">
         <DialogHeader>
           <DialogTitle>Создать упражнение с ИИ</DialogTitle>
         </DialogHeader>
-        <div className="flex rounded-2xl bg-muted p-1 text-sm font-semibold">
-          {(["text", "yt"] as const).map((t) => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={cn(
-                "flex-1 rounded-xl py-2 transition-colors",
-                tab === t ? "bg-card shadow-sm" : "text-muted-foreground",
-              )}
-            >
-              {t === "text" ? "Словами" : "YouTube-видео"}
-            </button>
-          ))}
-        </div>
-        {tab === "text" ? <AiTextTab onDone={onDone} /> : <AiYoutubeTab onClose={onClose} />}
+        <AiTextTab onDone={onDone} />
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function AiYoutubeDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-h-[85vh] overflow-y-auto rounded-3xl">
+        <DialogHeader>
+          <DialogTitle>Разобрать YouTube-видео</DialogTitle>
+        </DialogHeader>
+        <AiYoutubeTab onClose={onClose} />
       </DialogContent>
     </Dialog>
   );

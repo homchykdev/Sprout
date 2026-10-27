@@ -121,3 +121,4 @@ local.properties
 
 # Generated MediaPipe WASM (copied from node_modules by scripts/prepare-mediapipe.mjs)
 public/mediapipe/wasm/
+shots/

@@ -92,7 +92,7 @@ async function callOnce(
  * Returns the index of the key that worked so the client can prefer it next time.
  */
 export const askAi = createServerFn({ method: "POST" })
-  .inputValidator((d) => Input.parse(d))
+  .validator((d) => Input.parse(d))
   .handler(async ({ data }) => {
     let last: unknown = null;
     for (let i = 0; i < data.keys.length; i++) {
@@ -152,7 +152,7 @@ async function pingOnce(
 
 /** Checks which key works without spending generation quota. Returns ms of the working key. */
 export const pingAi = createServerFn({ method: "POST" })
-  .inputValidator((d) => PingInput.parse(d))
+  .validator((d) => PingInput.parse(d))
   .handler(async ({ data }) => {
     let last: unknown = null;
     for (let i = 0; i < data.keys.length; i++) {
@@ -292,7 +292,7 @@ const SPLIT_INSTRUCTION = [
  * Rotates through the user's keys on quota errors like askAi does.
  */
 export const aiSplitWorkout = createServerFn({ method: "POST" })
-  .inputValidator((d) => SplitInput.parse(d))
+  .validator((d) => SplitInput.parse(d))
   .handler(async ({ data }) => {
     if (
       !/(^|\.)(youtube\.com|youtu\.be)$/i.test(
@@ -301,59 +301,91 @@ export const aiSplitWorkout = createServerFn({ method: "POST" })
     ) {
       throw new Error("Это не ссылка на YouTube.");
     }
-    let last: unknown = null;
-    let quotaHit = false;
-    for (let i = 0; i < data.keys.length; i++) {
-      try {
-        // NOTE: the SDK retries 429/5xx internally a few times before throwing,
-        // so rotation to the next key happens with a delay — still correct.
-        const ai = new GoogleGenAI({ apiKey: data.keys[i]! });
-        const response = await ai.models.generateContent({
-          model: data.model,
-          contents: [{ fileData: { fileUri: data.youtubeUrl } }, { text: SPLIT_INSTRUCTION }],
-          config: {
-            tools: [{ functionDeclarations: [importWorkoutDecl] }],
-            toolConfig: {
-              functionCallingConfig: {
-                mode: FunctionCallingConfigMode.ANY,
-                allowedFunctionNames: ["import_workout"],
-              },
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    const callSplit = async (apiKey: string) => {
+      // Bounded request: no silent SDK retries (attempts: 1) and a hard timeout —
+      // otherwise 503 storms made the client spinner "hang" for many minutes.
+      const ai = new GoogleGenAI({
+        apiKey,
+        httpOptions: { timeout: 180_000, retryOptions: { attempts: 1 } },
+      });
+      const response = await ai.models.generateContent({
+        model: data.model,
+        contents: [{ fileData: { fileUri: data.youtubeUrl } }, { text: SPLIT_INSTRUCTION }],
+        config: {
+          tools: [{ functionDeclarations: [importWorkoutDecl] }],
+          toolConfig: {
+            functionCallingConfig: {
+              mode: FunctionCallingConfigMode.ANY,
+              allowedFunctionNames: ["import_workout"],
             },
           },
-        });
-        const call = (response.functionCalls ?? []).find((c) => c.name === "import_workout");
-        if (!call) {
-          throw new Error(
-            `В видео не найдено упражнений.${response.text ? ` Ответ модели: ${response.text.slice(0, 300)}` : " Возможно, ролик приватный или это не тренировка."}`,
-          );
-        }
-        const parsed = SplitArgs.safeParse(call.args);
-        if (!parsed.success)
-          throw new Error("Модель вернула упражнения в неверном формате. Попробуйте ещё раз.");
-        const exercises = parsed.data.exercises.map((e) => ({
-          ...e,
-          clips: e.clips.filter((c) => c.end > c.start).sort((a, b) => a.start - b.start),
-        }));
-        if (!exercises.length) throw new Error("В видео не найдено упражнений.");
-        return { exercises, keyIndex: i };
-      } catch (e) {
-        const status = statusOf(e);
-        if (status == null) throw e;
-        const msg = e instanceof Error ? e.message : "";
-        if (status === 400 && !isBadKeyMessage(msg))
-          throw new Error(
-            "Не удалось прочитать видео. Проверьте, что ролик публичный, и модель поддерживает видео.",
-          );
-        if (status === 429 || status >= 500) {
-          quotaHit = true;
-          last = e;
-        } else {
+        },
+      });
+      const call = (response.functionCalls ?? []).find((c) => c.name === "import_workout");
+      if (!call) {
+        throw new Error(
+          `В видео не найдено упражнений.${response.text ? ` Ответ модели: ${response.text.slice(0, 300)}` : " Возможно, ролик приватный или это не тренировка."}`,
+        );
+      }
+      const parsed = SplitArgs.safeParse(call.args);
+      if (!parsed.success)
+        throw new Error("Модель вернула упражнения в неверном формате. Попробуйте ещё раз.");
+      const exercises = parsed.data.exercises.map((e) => ({
+        ...e,
+        clips: e.clips.filter((c) => c.end > c.start).sort((a, b) => a.start - b.start),
+      }));
+      if (!exercises.length) throw new Error("В видео не найдено упражнений.");
+      return exercises;
+    };
+
+    let last: unknown = null;
+    let quotaHit = false;
+    let overloaded = false;
+    for (let i = 0; i < data.keys.length; i++) {
+      // Up to 2 attempts per key: a controlled retry for 5xx (overloaded model)
+      // after a fixed pause. 429 means this key's quota is gone — rotate instead.
+      for (let attempt = 1; ; attempt++) {
+        try {
+          const exercises = await callSplit(data.keys[i]!);
+          return { exercises, keyIndex: i };
+        } catch (e) {
+          const status = statusOf(e);
+          if (status == null) throw e;
+          const msg = e instanceof Error ? e.message : "";
+          if (status === 400 && !isBadKeyMessage(msg))
+            throw new Error(
+              "Не удалось прочитать видео. Проверьте, что ролик публичный, и модель поддерживает видео.",
+            );
+          if (status >= 500) {
+            overloaded = true;
+            last = e;
+            if (attempt === 1) {
+              await sleep(8_000);
+              continue;
+            }
+            break;
+          }
+          if (status === 429) {
+            quotaHit = true;
+            last = e;
+            break;
+          }
           last = new Error("ИИ-ключ не принят. Проверьте его в настройках.");
+          break;
         }
       }
     }
-    if (quotaHit && data.keys.length > 1)
-      throw new Error(`Лимиты исчерпаны на всех ключах (${data.keys.length}). Попробуйте позже.`);
+    if (overloaded)
+      throw new Error(
+        "Модель Gemini сейчас перегружена (высокая нагрузка). Попробуйте через несколько минут или выберите другую модель в настройках.",
+      );
+    if (quotaHit)
+      throw new Error(
+        data.keys.length > 1
+          ? `Лимиты исчерпаны на всех ключах (${data.keys.length}). Попробуйте позже.`
+          : "Лимит запросов ИИ исчерпан. Попробуйте чуть позже.",
+      );
     if (last instanceof Error) throw last;
     throw new Error("Лимиты исчерпаны на всех ключах. Попробуйте позже.");
   });
