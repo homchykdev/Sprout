@@ -1,12 +1,13 @@
 import type { AppState, VoiceSettings } from "./store";
 import type { PlanSettings } from "./plan";
 import type { PhotoReminderSettings } from "./photo-reminders";
+import type { ReminderSettings } from "./phrases";
 import type { AiSettings } from "./types";
 
 /** The subset of app state the settings page edits as a draft (before a save by the user). */
 export interface SettingsDraft {
   name: string;
-  reminders: { enabled: boolean; hour: number };
+  reminders: ReminderSettings;
   photoReminder: PhotoReminderSettings;
   voice: VoiceSettings;
   ai: AiSettings;

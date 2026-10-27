@@ -5,9 +5,19 @@ import { TapButton } from "@/components/game/TapButton";
 import { notify } from "@/components/game/useReminders";
 import { usePhotoDue } from "@/hooks/usePhotoReminder";
 import { PHOTO_INTERVALS, nextPhotoDate, reminderMessage } from "@/lib/photo-reminders";
+import { dayKey } from "@/lib/game";
+import { buildSlots, clampMinute, REMINDER_CAP, WINDOW_MIN } from "@/lib/phrases";
+import { dayInfo } from "@/lib/plan";
+import { useApp } from "@/lib/store";
 import { sliceChanged } from "@/lib/settings-draft";
 import { SectionCard, selectField } from "./SectionCard";
 import { useSettingsDraft } from "./draft-context";
+
+/** 30-minute steps from 06:00 to 22:00 (the reminder window range). */
+const windowOptions: number[] = Array.from({ length: 33 }, (_, i) => WINDOW_MIN + i * 30);
+
+const formatHM = (m: number) =>
+  `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 
 const hourOptions = Array.from({ length: 17 }, (_, i) => i + 6);
 
@@ -35,6 +45,11 @@ export function NotificationsGroup() {
     { reminders: entry.reminders, photoReminder: entry.photoReminder },
   );
 
+  // Today's schedule preview from the current draft: kind comes from the saved plan.
+  const now = new Date();
+  const kind = dayInfo(useApp.getState(), now, now).status === "rest" ? "rest" : "workout";
+  const slots = draft.reminders.enabled ? buildSlots(draft.reminders, dayKey(now), kind) : [];
+
   return (
     <SectionCard title="Уведомления" changed={changed}>
       <div className="flex items-center justify-between">
@@ -44,20 +59,94 @@ export function NotificationsGroup() {
           onCheckedChange={(v) => update({ reminders: { ...draft.reminders, enabled: v } })}
         />
       </div>
-      <label className="flex items-center justify-between">
-        <span>Первое напоминание в</span>
-        <select
-          className={selectField}
-          value={draft.reminders.hour}
-          onChange={(e) => update({ reminders: { ...draft.reminders, hour: +e.target.value } })}
-        >
-          {hourOptions.map((h) => (
-            <option key={h} value={h}>
-              {h}:00
-            </option>
-          ))}
-        </select>
-      </label>
+      {draft.reminders.enabled && (
+        <>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="block">
+              <span className="mb-1 block text-sm text-muted-foreground">Окно с</span>
+              <select
+                className={selectField}
+                value={draft.reminders.windowStart}
+                onChange={(e) => {
+                  const windowStart = +e.target.value;
+                  update({
+                    reminders: {
+                      ...draft.reminders,
+                      windowStart,
+                      windowEnd: Math.max(draft.reminders.windowEnd, windowStart + 60),
+                      preferred: clampMinute(
+                        draft.reminders.preferred,
+                        windowStart,
+                        Math.max(draft.reminders.windowEnd, windowStart + 60),
+                      ),
+                    },
+                  });
+                }}
+              >
+                {windowOptions
+                  .filter((m) => m <= draft.reminders.windowEnd - 60)
+                  .map((m) => (
+                    <option key={m} value={m}>
+                      {formatHM(m)}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-sm text-muted-foreground">Окно до</span>
+              <select
+                className={selectField}
+                value={draft.reminders.windowEnd}
+                onChange={(e) => {
+                  const windowEnd = +e.target.value;
+                  update({
+                    reminders: {
+                      ...draft.reminders,
+                      windowEnd,
+                      preferred: clampMinute(
+                        draft.reminders.preferred,
+                        draft.reminders.windowStart,
+                        windowEnd,
+                      ),
+                    },
+                  });
+                }}
+              >
+                {windowOptions
+                  .filter((m) => m >= draft.reminders.windowStart + 60 && m <= REMINDER_CAP - 30)
+                  .map((m) => (
+                    <option key={m} value={m}>
+                      {formatHM(m)}
+                    </option>
+                  ))}
+              </select>
+            </label>
+          </div>
+          <label className="flex items-center justify-between">
+            <span>Обычное время тренировки</span>
+            <select
+              className={selectField}
+              value={draft.reminders.preferred}
+              onChange={(e) =>
+                update({ reminders: { ...draft.reminders, preferred: +e.target.value } })
+              }
+            >
+              {windowOptions
+                .filter((m) => m >= draft.reminders.windowStart && m <= draft.reminders.windowEnd)
+                .map((m) => (
+                  <option key={m} value={m}>
+                    {formatHM(m)}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <p className="text-sm text-muted-foreground">
+            {slots.length
+              ? `Сегодня ~${slots.length} нап${slots.length === 1 ? "оминание" : "оминаний"}: ${slots.map(formatHM).join(", ")}. ${kind === "rest" ? "День отдыха — только один дружелюбный пинг." : "К концу окна напоминания становятся настойчивее."}`
+              : "Напоминания выключены."}
+          </p>
+        </>
+      )}
 
       <div className="flex items-center justify-between border-t border-border pt-3">
         <span>Напоминать делать фото</span>
@@ -116,8 +205,9 @@ export function NotificationsGroup() {
         <Bell className="h-4 w-4" /> Разрешить уведомления
       </TapButton>
       <p className="text-sm text-muted-foreground">
-        Если не потренируешься — Пульс напомнит ещё через 2 и 4 часа. Уведомления приходят, пока
-        приложение открыто или установлено на главный экран.
+        Напоминания приходят в течение окна тренировки и становятся настойчивее к его концу, а раз в
+        день их количество разное. Работают, пока приложение открыто или установлено на главный
+        экран (максимум до 22:00).
       </p>
       {pr.enabled && (
         <p className="text-xs text-muted-foreground">

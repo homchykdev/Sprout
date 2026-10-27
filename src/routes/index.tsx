@@ -1,6 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { Camera, Check, ChevronRight, Palmtree, Play } from "lucide-react";
 import { usePhotoDue } from "@/hooks/usePhotoReminder";
+import { useIdleNudge } from "@/hooks/useIdleNudge";
 import { reminderMessage } from "@/lib/photo-reminders";
 import { Mascot, type Mood } from "@/components/game/Mascot";
 import { TapButton } from "@/components/game/TapButton";
@@ -82,6 +83,7 @@ function Today() {
   const challenge = monthlyChallenge(s.sessions, now);
   const party = useCelebrate();
   const photo = usePhotoDue();
+  useIdleNudge();
   const w = nx?.workout;
 
   return (

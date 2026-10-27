@@ -4,6 +4,7 @@ import { SEED_EXERCISES, SEED_WORKOUTS } from "./seed";
 import { DEFAULT_PLAN_SETTINGS, defaultPlan, planFromSchedule, reorderSteps } from "./plan";
 import { DEFAULT_FFMPEG_OPTIONS, DEFAULT_FFMPEG_OUT } from "./video-rules";
 import { DEFAULT_PHOTO_REMINDER, type PhotoReminderSettings } from "./photo-reminders";
+import { DEFAULT_REMINDERS, migrateReminders, type ReminderSettings } from "./phrases";
 import {
   normalizeMuscles,
   type Plan,
@@ -32,7 +33,7 @@ export interface AppState {
   ffmpegOptions: string[];
   /** Output container for cloud video conversion (webm/mp4/webp). */
   ffmpegOut: string;
-  reminders: { enabled: boolean; hour: number };
+  reminders: ReminderSettings;
   lastNotified: string;
   /** Progress-photo reminder (every N days since the last photo). */
   photoReminder: PhotoReminderSettings;
@@ -102,7 +103,7 @@ export const initialState: AppState = {
   ffmpegKey: "",
   ffmpegOptions: [...DEFAULT_FFMPEG_OPTIONS],
   ffmpegOut: "webm",
-  reminders: { enabled: true, hour: 18 },
+  reminders: { ...DEFAULT_REMINDERS },
   lastNotified: "",
   photoReminder: { ...DEFAULT_PHOTO_REMINDER },
   lastPhotoNotified: "",
@@ -199,7 +200,7 @@ export const useApp = create<AppState & Actions>()(
     }),
     {
       name: "pulse-fit-v1",
-      version: 11,
+      version: 12,
       migrate: (persisted, from) =>
         migrateState(persisted as Partial<AppState>, from) as AppState & Actions,
     },
@@ -209,7 +210,7 @@ export const useApp = create<AppState & Actions>()(
 export const uid = () =>
   Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
 
-/** v1 -> v2: legacy muscle keys become body-map muscles; fill new fields. v2 -> v3: badges/medals seen + sound theme. v3 -> v4: single ai.apiKey becomes ai.keys array. v4 -> v5: ffmpegKey for cloud video conversion. v5 -> v6: tunable ffmpegOptions/ffmpegOut. v6 -> v7: MuscleWiki removed (mwKey dropped, "musclewiki" sources become custom). v7 -> v8: weekly schedule becomes the repeating plan cycle. v8 -> v9: progress-photo reminders. v9 -> v10: `onboarded` flag — existing installs skip the welcome wizard. v10 -> v11: user feedback (difficulty 1-10 + like/dislike) on exercises/workouts — optional fields, nothing to backfill. */
+/** v1 -> v2: legacy muscle keys become body-map muscles; fill new fields. v2 -> v3: badges/medals seen + sound theme. v3 -> v4: single ai.apiKey becomes ai.keys array. v4 -> v5: ffmpegKey for cloud video conversion. v5 -> v6: tunable ffmpegOptions/ffmpegOut. v6 -> v7: MuscleWiki removed (mwKey dropped, "musclewiki" sources become custom). v7 -> v8: weekly schedule becomes the repeating plan cycle. v8 -> v9: progress-photo reminders. v9 -> v10: `onboarded` flag — existing installs skip the welcome wizard. v10 -> v11: user feedback (difficulty 1-10 + like/dislike) on exercises/workouts — optional fields, nothing to backfill. v11 -> v12: reminders become a workout window (start/end) + preferred workout time. */
 export function migrateState(p: Partial<AppState>, from: number): Partial<AppState> {
   const out: Partial<AppState> = { ...p };
   // Fresh installs (unknown version) start the wizard; upgrades keep the old behaviour.
@@ -260,6 +261,8 @@ export function migrateState(p: Partial<AppState>, from: number): Partial<AppSta
       }));
   }
   out.voice = { ...initialState.voice, ...(p.voice ?? {}) };
+  // v11 -> v12: reminders become a workout window + preferred time.
+  out.reminders = migrateReminders(p.reminders as { enabled: boolean; hour: number } | undefined);
   out.photoReminder = { ...DEFAULT_PHOTO_REMINDER, ...(p.photoReminder ?? {}) };
   if (typeof p.lastPhotoNotified !== "string") out.lastPhotoNotified = "";
   if (from < 3) {
