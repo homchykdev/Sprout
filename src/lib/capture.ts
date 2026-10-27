@@ -8,9 +8,54 @@ export function cameraConstraints(facing: CameraFacing = "user"): MediaStreamCon
     facingMode: { ideal: facing },
     width: { ideal: 1440 },
     height: { ideal: 1920 },
+    aspectRatio: { ideal: 3 / 4 },
     advanced: [{ focusMode: "continuous" } as MediaTrackConstraintSet],
   };
   return { video, audio: false };
+}
+
+export function shouldRotateCameraFeed(
+  videoWidth: number,
+  videoHeight: number,
+  viewportWidth: number,
+  viewportHeight: number,
+): boolean {
+  return videoWidth > videoHeight && viewportHeight > viewportWidth;
+}
+
+export function cameraFrameSize(
+  width: number,
+  height: number,
+  rotate: boolean,
+): { width: number; height: number } {
+  return rotate ? { width: height, height: width } : { width, height };
+}
+
+export function drawCameraFrame(
+  video: HTMLVideoElement,
+  canvas: HTMLCanvasElement,
+  rotate: boolean,
+  mirror = false,
+): boolean {
+  const width = video.videoWidth;
+  const height = video.videoHeight;
+  const ctx = canvas.getContext("2d");
+  if (!width || !height || !ctx) return false;
+
+  const size = cameraFrameSize(width, height, rotate);
+  if (canvas.width !== size.width) canvas.width = size.width;
+  if (canvas.height !== size.height) canvas.height = size.height;
+  if (rotate && mirror) {
+    ctx.transform(0, 1, 1, 0, 0, 0);
+  } else if (rotate) {
+    ctx.translate(height, 0);
+    ctx.rotate(Math.PI / 2);
+  } else if (mirror) {
+    ctx.translate(width, 0);
+    ctx.scale(-1, 1);
+  }
+  ctx.drawImage(video, 0, 0, width, height);
+  return true;
 }
 
 export function stopStream(stream: MediaStream | null) {
@@ -21,20 +66,12 @@ export function stopStream(stream: MediaStream | null) {
 export function captureJpeg(
   video: HTMLVideoElement,
   mirror: boolean,
+  rotate = false,
   quality = 0.9,
 ): Promise<Blob> {
-  const w = video.videoWidth || 1080;
-  const h = video.videoHeight || 1920;
   const canvas = document.createElement("canvas");
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return Promise.reject(new Error("canvas"));
-  if (mirror) {
-    ctx.translate(w, 0);
-    ctx.scale(-1, 1);
-  }
-  ctx.drawImage(video, 0, 0, w, h);
+  if (!drawCameraFrame(video, canvas, rotate, mirror))
+    return Promise.reject(new Error("Camera frame is unavailable."));
   return new Promise((resolve, reject) => {
     canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("empty"))), "image/jpeg", quality);
   });
@@ -42,7 +79,7 @@ export function captureJpeg(
 
 /** Draws a small grayscale frame into a reusable canvas and returns its pixels. */
 export function sampleGray(
-  video: HTMLVideoElement,
+  video: HTMLVideoElement | HTMLCanvasElement,
   canvas: HTMLCanvasElement,
 ): Uint8ClampedArray | null {
   const w = 64;
@@ -50,7 +87,7 @@ export function sampleGray(
   if (canvas.width !== w) canvas.width = w;
   if (canvas.height !== h) canvas.height = h;
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  if (!ctx || !video.videoWidth) return null;
+  if (!ctx || !("videoWidth" in video ? video.videoWidth : video.width)) return null;
   ctx.drawImage(video, 0, 0, w, h);
   return ctx.getImageData(0, 0, w, h).data;
 }

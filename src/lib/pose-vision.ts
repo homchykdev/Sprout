@@ -172,7 +172,7 @@ export function loadPoseLandmarker(): Promise<PoseLandmarker> {
 
 export function detectPose(
   landmarker: PoseLandmarker,
-  video: HTMLVideoElement,
+  video: HTMLVideoElement | HTMLCanvasElement,
   timestamp: number,
 ): PosePoint[] | null {
   const result = landmarker.detectForVideo(video, timestamp);

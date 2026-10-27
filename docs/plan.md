@@ -222,3 +222,36 @@ Make the current web app build usable as bundled Capacitor assets for the existi
 ## Outcome
 
 Approved and implemented: the SPA shell is emitted as `.output/public/index.html`, and the Android sync/build path was verified. Typecheck and tests passed; lint completed with existing warnings.
+
+---
+
+# Android notifications and camera framing
+
+## Goal
+
+Make scheduled workout/photo reminders arrive while the Android app is backgrounded or closed, and show/capture the Samsung Galaxy A53 5G portrait camera feed without cutting off its top or bottom.
+
+## Steps
+
+1. Add `@capacitor/local-notifications` for native Android scheduling and permission requests; retain the existing browser notification behavior for web.
+2. Connect the workout/photo reminder schedule and settings updates to Android's local notification scheduler. Replace/cancel pending app-managed reminders when settings or schedule change, and avoid posting duplicate foreground reminders. Document Android's notification permission and battery/force-stop limitations.
+3. Request a portrait 3:4 camera aspect ratio where supported. Inspect actual video dimensions at runtime; if the Android WebView reports a landscape frame while the device is held vertically, display the frame upright in a contained portrait viewport and rotate the captured canvas consistently, rather than cropping its top and bottom.
+4. Add focused tests for portrait aspect-ratio constraints, orientation normalization, and reminder schedule generation/cancellation. Run typecheck, lint, tests, production build, Capacitor sync, and Android debug build.
+
+## Expected files
+
+- `package.json` and the npm lockfile — add the Capacitor Local Notifications plugin; required to deliver notifications while JavaScript is stopped.
+- `src/lib/notify.ts`, `src/components/game/useReminders.ts`, `src/hooks/usePhotoReminder.ts`, and `src/components/game/settings/NotificationsGroup.tsx` — native notification permission, scheduling, and settings integration with a web fallback.
+- `src/lib/capture.ts`, `src/components/game/CameraStage.tsx`, and `src/lib/__tests__/capture.test.ts` — portrait stream/capture orientation handling.
+- `README.md` — Android notification behavior and permissions.
+- `docs/plan.md` — this plan.
+
+## Risks
+
+- Android 13+ requires notification permission, and Android vendor battery optimizations or force-stopping the app can restrict alarms. The app must report denied permission clearly and avoid claiming delivery in those states.
+- The device camera may report sensor dimensions differently across WebView/Android versions. Runtime dimension checks should rotate only a landscape feed displayed in portrait, without stretching or cropping native portrait feeds.
+- Physical Galaxy A53 verification is not available in this environment; the updated APK will need a device retest.
+
+## Outcome
+
+Implemented and verified with automated tests, TypeScript, lint, production build, Capacitor sync, and Android debug build. Physical Galaxy A53 verification remains outstanding.

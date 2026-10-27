@@ -1,4 +1,5 @@
 import { useEffect, useMemo } from "react";
+import { Capacitor } from "@capacitor/core";
 import { notify } from "@/lib/notify";
 import { useMedia } from "@/lib/media";
 import {
@@ -42,6 +43,7 @@ export function usePhotoReminders() {
   const set = useApp((s) => s.set);
 
   useEffect(() => {
+    if (Capacitor.isNativePlatform()) return;
     if (!photo.due || !reminderHourReached(settings)) return;
     const today = dayKey(new Date());
     if (sentDay === today) return;

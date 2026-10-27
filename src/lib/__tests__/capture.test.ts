@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { cameraConstraints, motionScore } from "../capture";
+import {
+  cameraConstraints,
+  cameraFrameSize,
+  motionScore,
+  shouldRotateCameraFeed,
+} from "../capture";
 
 const frame = (r: number, g: number, b: number, n = 4) => {
   const out = new Uint8ClampedArray(n * 4);
@@ -18,10 +23,19 @@ describe("capture", () => {
     expect(c.facingMode).toEqual({ ideal: "user" });
     expect(c.width).toEqual({ ideal: 1440 });
     expect(c.height).toEqual({ ideal: 1920 });
+    expect(c.aspectRatio).toEqual({ ideal: 3 / 4 });
     expect(c.advanced?.[0]).toMatchObject({ focusMode: "continuous" });
     expect(cameraConstraints("environment").video).toMatchObject({
       facingMode: { ideal: "environment" },
     });
+  });
+
+  it("rotates a landscape camera feed only in a portrait viewport", () => {
+    expect(shouldRotateCameraFeed(1920, 1440, 390, 844)).toBe(true);
+    expect(shouldRotateCameraFeed(1440, 1920, 390, 844)).toBe(false);
+    expect(shouldRotateCameraFeed(1920, 1440, 844, 390)).toBe(false);
+    expect(cameraFrameSize(1920, 1440, true)).toEqual({ width: 1440, height: 1920 });
+    expect(cameraFrameSize(1440, 1920, false)).toEqual({ width: 1440, height: 1920 });
   });
 
   it("scores identical frames as zero motion and changes as movement", () => {

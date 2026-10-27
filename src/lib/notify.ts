@@ -1,5 +1,23 @@
+import { Capacitor } from "@capacitor/core";
+import { LocalNotifications } from "@capacitor/local-notifications";
+
 /** System notification via the service worker when possible, else the Notification API. */
 export async function notify(title: string, body: string) {
+  if (Capacitor.isNativePlatform()) {
+    const permission = await LocalNotifications.checkPermissions();
+    if (permission.display !== "granted") return false;
+    await LocalNotifications.schedule({
+      notifications: [
+        {
+          id: (Date.now() % 999_999) + 1,
+          title,
+          body,
+        },
+      ],
+    });
+    return true;
+  }
+
   if (typeof Notification === "undefined" || Notification.permission !== "granted") return false;
   try {
     const reg = await navigator.serviceWorker?.getRegistration();
@@ -15,4 +33,13 @@ export async function notify(title: string, body: string) {
   } catch {
     return false;
   }
+}
+
+export async function requestNotificationPermission(): Promise<boolean> {
+  if (Capacitor.isNativePlatform()) {
+    const permission = await LocalNotifications.requestPermissions();
+    return permission.display === "granted";
+  }
+  if (typeof Notification === "undefined") return false;
+  return (await Notification.requestPermission()) === "granted";
 }

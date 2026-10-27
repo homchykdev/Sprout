@@ -2,10 +2,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Camera, Eye, EyeOff, SkipForward, SwitchCamera, X } from "lucide-react";
 import {
   captureJpeg,
+  drawCameraFrame,
   motionScore,
   sampleGray,
   stopStream,
   cameraConstraints,
+  shouldRotateCameraFeed,
   type CameraFacing,
 } from "@/lib/capture";
 import { useBlobUrl, type MediaItem } from "@/lib/media";
@@ -37,6 +39,7 @@ interface Props {
 /** Live camera with MediaPipe pose checks, voice guidance and auto shutter (fallback: stillness). */
 export function CameraStage({ frame, step, total, ghost, onCaptured, onSkip, onExit }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const previewRef = useRef<HTMLDivElement>(null);
   const [model, setModel] = useState<Model>("loading");
   const [status, setStatus] = useState("Включаю камеру…");
   const [tone, setTone] = useState<Tone>("info");
@@ -46,6 +49,8 @@ export function CameraStage({ frame, step, total, ghost, onCaptured, onSkip, onE
   const [countdown, setCountdown] = useState<number | null>(null);
   const [facing, setFacing] = useState<CameraFacing>("user");
   const [twoCams, setTwoCams] = useState(false);
+  const [rotateFeed, setRotateFeed] = useState(false);
+  const [previewSize, setPreviewSize] = useState({ width: 0, height: 0 });
   const cdRef = useRef(false);
   const shotRef = useRef(false);
   const ghostUrl = useBlobUrl(ghost?.blob);
@@ -54,7 +59,7 @@ export function CameraStage({ frame, step, total, ghost, onCaptured, onSkip, onE
     if (shotRef.current) return;
     shotRef.current = true;
     try {
-      const blob = await captureJpeg(videoRef.current!, facing === "user");
+      const blob = await captureJpeg(videoRef.current!, facing === "user", rotateFeed);
       onCaptured(blob);
     } catch {
       shotRef.current = false;
@@ -62,7 +67,19 @@ export function CameraStage({ frame, step, total, ghost, onCaptured, onSkip, onE
       setCountdown(null);
       setError("Не удалось сделать снимок. Попробуй ещё раз.");
     }
-  }, [onCaptured, facing]);
+  }, [onCaptured, facing, rotateFeed]);
+
+  useEffect(() => {
+    const preview = previewRef.current;
+    if (!preview) return;
+    const updateSize = () => {
+      setPreviewSize({ width: preview.clientWidth, height: preview.clientHeight });
+    };
+    updateSize();
+    const observer = new ResizeObserver(updateSize);
+    observer.observe(preview);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     speak(frame.instruction.join(" "), { interrupt: true });
@@ -93,6 +110,7 @@ export function CameraStage({ frame, step, total, ghost, onCaptured, onSkip, onE
     const video = videoRef.current;
     if (!video) return;
     let cancelled = false;
+    let rotatePortraitFeed = false;
     let stream: MediaStream | null = null;
     let raf = 0;
     let landmarker: Awaited<ReturnType<typeof loadPoseLandmarker>> | null = null;
@@ -100,12 +118,14 @@ export function CameraStage({ frame, step, total, ghost, onCaptured, onSkip, onE
     const tracker = new StabilityTracker();
     const gray = document.createElement("canvas");
     let prevGray: Uint8ClampedArray | null = null;
+    const upright = document.createElement("canvas");
     let lastDetect = 0;
     let stillSince = 0;
     let lastMotion = 0;
     let lastMsg = "";
     setModel("loading");
     setError(null);
+    setRotateFeed(false);
     // A retry or camera flip must not carry over an armed auto-shutter.
     cdRef.current = false;
     setCountdown(null);
@@ -129,13 +149,26 @@ export function CameraStage({ frame, step, total, ghost, onCaptured, onSkip, onE
       setCountdown(null);
     };
 
+    const updateOrientation = () => {
+      const bounds = previewRef.current?.getBoundingClientRect();
+      rotatePortraitFeed = shouldRotateCameraFeed(
+        video.videoWidth,
+        video.videoHeight,
+        bounds?.width ?? window.innerWidth,
+        bounds?.height ?? window.innerHeight,
+      );
+      setRotateFeed(rotatePortraitFeed);
+    };
+
     const loop = (ts: number) => {
       if (cancelled) return;
       if (video.readyState >= 2) {
+        const source =
+          rotatePortraitFeed && drawCameraFrame(video, upright, true) ? upright : video;
         if (landmarker) {
           if (ts - lastDetect >= 120) {
             lastDetect = ts;
-            const points = detectPose(landmarker, video, performance.now());
+            const points = detectPose(landmarker, source, performance.now());
             const check = analyzePose(points, frame.view, frame.strain);
             const still = points ? tracker.update(points, ts) : 0;
             if (!points) tracker.reset();
@@ -153,7 +186,7 @@ export function CameraStage({ frame, step, total, ghost, onCaptured, onSkip, onE
             }
           }
         } else if (modelDone) {
-          const pixels = sampleGray(video, gray);
+          const pixels = sampleGray(source, gray);
           if (pixels) {
             let light = 0;
             for (let i = 0; i < pixels.length; i += 32) light += pixels[i]!;
@@ -201,8 +234,11 @@ export function CameraStage({ frame, step, total, ghost, onCaptured, onSkip, onE
           stopStream(stream);
           return;
         }
+        video.addEventListener("loadedmetadata", updateOrientation);
+        window.addEventListener("resize", updateOrientation);
         video.srcObject = stream;
         await video.play().catch(() => {});
+        updateOrientation();
         // More than one video input → the flip button is worth showing.
         navigator.mediaDevices
           .enumerateDevices()
@@ -222,6 +258,8 @@ export function CameraStage({ frame, step, total, ghost, onCaptured, onSkip, onE
     return () => {
       cancelled = true;
       cancelAnimationFrame(raf);
+      video.removeEventListener("loadedmetadata", updateOrientation);
+      window.removeEventListener("resize", updateOrientation);
       stopStream(stream);
       stopSpeech();
       if (video) video.srcObject = null;
@@ -230,15 +268,27 @@ export function CameraStage({ frame, step, total, ghost, onCaptured, onSkip, onE
 
   return (
     <div className="relative flex h-[100dvh] flex-col bg-black text-white">
-      <div className="relative min-h-0 flex-1 overflow-hidden">
+      <div ref={previewRef} className="relative min-h-0 flex-1 overflow-hidden">
         <video
           ref={videoRef}
           autoPlay
           playsInline
           muted
+          style={
+            rotateFeed && previewSize.width && previewSize.height
+              ? {
+                  width: previewSize.height,
+                  height: previewSize.width,
+                  transform: `translate(-50%, -50%) ${facing === "user" ? "scaleX(-1) " : ""}rotate(90deg)`,
+                }
+              : undefined
+          }
           className={cn(
-            "absolute inset-0 h-full w-full object-contain",
-            facing === "user" && "scale-x-[-1]",
+            "object-contain",
+            rotateFeed && previewSize.width && previewSize.height
+              ? "absolute left-1/2 top-1/2 max-h-none max-w-none"
+              : "absolute inset-0 h-full w-full",
+            facing === "user" && !rotateFeed && "scale-x-[-1]",
           )}
         />
         {ghostUrl && ghostOn && (

@@ -1,8 +1,11 @@
 import { Bell } from "lucide-react";
 import { toast } from "sonner";
+import { Capacitor } from "@capacitor/core";
 import { Switch } from "@/components/ui/switch";
 import { TapButton } from "@/components/game/TapButton";
 import { notify } from "@/components/game/useReminders";
+import { requestNotificationPermission } from "@/lib/notify";
+import { syncNativeReminderSchedule } from "@/lib/native-reminders";
 import { usePhotoDue } from "@/hooks/usePhotoReminder";
 import { PHOTO_INTERVALS, nextPhotoDate, reminderMessage } from "@/lib/photo-reminders";
 import { dayKey } from "@/lib/game";
@@ -22,6 +25,11 @@ const formatHM = (m: number) =>
 const hourOptions = Array.from({ length: 17 }, (_, i) => i + 6);
 
 async function askNotificationPermission(): Promise<boolean> {
+  if (Capacitor.isNativePlatform()) {
+    const granted = await requestNotificationPermission();
+    if (!granted) toast.error("Разреши уведомления для Sprout в настройках Android.");
+    return granted;
+  }
   if (typeof Notification === "undefined") {
     toast.error("Браузер не поддерживает уведомления");
     return false;
@@ -197,17 +205,27 @@ export function NotificationsGroup() {
         variant="soft"
         size="sm"
         onClick={async () => {
-          if (await askNotificationPermission()) {
-            await notify("Огонёк на связи 💪", "Теперь я буду напоминать о тренировках!");
+          try {
+            if (await askNotificationPermission()) {
+              await syncNativeReminderSchedule(useApp.getState(), photo.lastDate);
+              const sent = await notify(
+                "Огонёк на связи 💪",
+                "Теперь я буду напоминать о тренировках!",
+              );
+              if (!sent) toast.error("Не удалось отправить тестовое уведомление.");
+            }
+          } catch (error) {
+            console.error("Could not request or schedule notifications.", error);
+            toast.error("Не удалось включить уведомления. Проверь системные разрешения.");
           }
         }}
       >
         <Bell className="h-4 w-4" /> Разрешить уведомления
       </TapButton>
       <p className="text-sm text-muted-foreground">
-        Напоминания приходят в течение окна тренировки и становятся настойчивее к его концу, а раз в
-        день их количество разное. Работают, пока приложение открыто или установлено на главный
-        экран (максимум до 22:00).
+        На Android напоминания планируются системой и могут приходить при закрытом приложении.
+        Энергосбережение телефона иногда задерживает их. В браузере проверка работает, пока вкладка
+        открыта. Не позже 22:00.
       </p>
       {pr.enabled && (
         <p className="text-xs text-muted-foreground">
