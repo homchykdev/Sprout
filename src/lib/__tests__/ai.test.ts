@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { maskKey, promoteKey } from "../ai-keys";
-import { buildWorkoutFromSplit, clampSets, clampTempoBpm, mapMuscles } from "../clients";
+import { articleExercise, buildWorkoutFromExercises, buildWorkoutFromSplit, clampSets, clampTempoBpm, mapMuscles, type ArticleExercise } from "../clients";
 import { migrateState } from "../store";
 import type { Exercise } from "../types";
 
@@ -22,6 +22,40 @@ describe("canonical muscle passthrough", () => {
   });
   it("still maps English muscle names", () => {
     expect(mapMuscles(["Biceps", "Chest"])).toEqual(["biceps", "chest"]);
+  });
+});
+
+describe("article import client helpers", () => {
+  const art: ArticleExercise = {
+    name: "Округление спины",
+    muscles: ["upper-back"],
+    category: "strength",
+    mode: "reps",
+    reps: 10,
+    seconds: 40,
+    equipment: "",
+    description: "Тренирует ромбовидные мышцы",
+    steps: ["Сядь", "Округли спину"],
+    mistakes: ["Резкие движения"],
+    videoUrl: "https://kinescope.io/embed/AAA",
+  };
+  it("builds an exercise keeping the media link and ai source", () => {
+    const ex = articleExercise(art);
+    expect(ex.id).toMatch(/^ai-/);
+    expect(ex.source).toBe("ai");
+    expect(ex.videoUrl).toBe("https://kinescope.io/embed/AAA");
+    expect(ex.muscles).toEqual(["upper-back"]);
+    expect(ex.category).toBe("strength");
+    expect(ex.mode).toBe("reps");
+    expect(ex.reps).toBe(10);
+    expect(ex.steps).toEqual(["Сядь", "Округли спину"]);
+  });
+  it("builds a workout with one set per article exercise", () => {
+    const ex = articleExercise(art);
+    const w = buildWorkoutFromExercises([ex], "Комплекс из статьи");
+    expect(w.name).toBe("Комплекс из статьи");
+    expect(w.items).toHaveLength(1);
+    expect(w.items[0]).toMatchObject({ exerciseId: ex.id, sets: 1, reps: 10, rest: 60 });
   });
 });
 
