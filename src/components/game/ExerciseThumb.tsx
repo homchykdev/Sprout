@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { parseLink, ytThumb } from "@/lib/embed";
+import { parseLink, posterFromUrl } from "@/lib/embed";
 import { getMedia, useBlobUrl, type MediaItem } from "@/lib/media";
 import type { Exercise } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -39,16 +39,12 @@ export function ExerciseThumb({ ex, className }: { ex: Exercise; className?: str
       </span>
     );
   const k = ex.videoUrl && !bad ? parseLink(ex.videoUrl) : null;
-  if (k?.type === "youtube")
+  /** Free provider poster (YouTube, Kinescope) instead of a generic emoji. */
+  const poster = ex.videoUrl && !bad ? posterFromUrl(ex.videoUrl) : null;
+  if (poster)
     return (
       <span className={box}>
-        <img
-          src={ytThumb(k.id)}
-          alt=""
-          loading="lazy"
-          className={cover}
-          onError={() => setBad(true)}
-        />
+        <img src={poster} alt="" loading="lazy" className={cover} onError={() => setBad(true)} />
       </span>
     );
   if (k?.type === "image")

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseClips, parseLink } from "../embed";
+import { parseClips, parseLink, posterFromUrl } from "../embed";
 describe("embed", () => {
   it("parses youtube links", () => {
     expect(parseLink("https://youtu.be/abc123?t=90")).toEqual({
@@ -17,5 +17,15 @@ describe("embed", () => {
       { start: 80, end: 105 },
       { start: 120, end: 130 },
     ]);
+  });
+  it("builds free poster urls for youtube and kinescope", () => {
+    expect(posterFromUrl("https://kinescope.io/embed/scUFPHj8pKdZcUkk6etQbx")).toBe(
+      "https://kinescope.io/scUFPHj8pKdZcUkk6etQbx/poster.svg",
+    );
+    expect(posterFromUrl("https://youtu.be/abc123?t=90")).toBe(
+      "https://i.ytimg.com/vi/abc123/hqdefault.jpg",
+    );
+    expect(posterFromUrl("https://some.site/embed/abc")).toBeNull();
+    expect(posterFromUrl("not a url")).toBeNull();
   });
 });

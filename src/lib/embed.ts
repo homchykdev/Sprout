@@ -66,3 +66,18 @@ export const clipsToText = (c?: Clip[]) =>
   (c ?? []).map((x) => `${fmtTime(x.start)}-${fmtTime(x.end)}`).join("\n");
 
 export const ytThumb = (id: string) => `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
+
+/**
+ * Poster image for link previews where the provider has a free thumbnail URL:
+ * YouTube and Kinescope (kinescope.io/{id}/poster.svg — an image response, no download needed).
+ */
+export function posterFromUrl(raw: string): string | null {
+  const k = parseLink(raw);
+  if (!k) return null;
+  if (k.type === "youtube") return ytThumb(k.id);
+  if (k.type === "iframe" && /(^|\/\/|\.|\/)kinescope\.io\/(?:embed\/)?[\w-]+$/i.test(k.url)) {
+    const id = k.url.split("/").pop();
+    if (id) return `https://kinescope.io/${id}/poster.svg`;
+  }
+  return null;
+}

@@ -1,5 +1,6 @@
 import { aiSplitWorkout, askAi, pingAi } from "./ai.functions";
 import { promoteKey } from "./ai-keys";
+import { fetchArticle } from "./article.functions";
 import { ffmpegPing } from "./ffmpeg.functions";
 import { useApp, uid } from "./store";
 import {
@@ -254,6 +255,53 @@ export async function aiImproveExercise(ex: Exercise, wish: string) {
     `Улучши описание упражнения (переведи на русский, если нужно). Пожелание: "${wish || "сделай понятнее, добавь частые ошибки"}". Текущее: ${JSON.stringify({ ...ex, videoUrl: undefined })}. Верни JSON: ${EX_SCHEMA}`,
   );
   return sanitizeExercise(j, ex);
+}
+
+// ---------- Import from a blog article ----------
+
+export type ArticleExercise = Awaited<ReturnType<typeof aiImportArticle>>[number];
+
+/**
+ * Splits a fitness blog article into exercises. The page is fetched in a server
+ * function (the AI itself has no web access), media stays as links — nothing is
+ * downloaded into the device storage.
+ */
+export async function aiImportArticle(url: string): Promise<ArticleExercise[]> {
+  const ai = useApp.getState().ai;
+  if (!ai.keys.length) throw new Error("Добавьте ключ ИИ в настройках");
+  const { exercises, keyIndex } = await fetchArticle({
+    data: { ...ai, keys: ai.keys, url: url.trim() },
+  });
+  if (keyIndex > 0) {
+    useApp.getState().set({ ai: { ...ai, keys: promoteKey(ai.keys, keyIndex) } });
+  }
+  return exercises;
+}
+
+/** Builds an Exercise from one article block (media link resolves in LinkMedia). */
+export function articleExercise(e: ArticleExercise): Exercise {
+  const { videoUrl } = e;
+  return sanitizeExercise(
+    { ...e, muscles: mapMuscles(e.muscles), category: mapCategory(e.category) },
+    { id: `ai-${uid()}`, source: "ai", ...(videoUrl ? { videoUrl } : {}) },
+  );
+}
+
+/** Builds a ready workout from already-created exercises (in display order). */
+export function buildWorkoutFromExercises(list: Exercise[], name: string): Workout {
+  return {
+    id: `w-${uid()}`,
+    name: name.trim() || "Комплекс из статьи",
+    emoji: "📰",
+    items: list.map((e) => ({
+      exerciseId: e.id,
+      sets: 1,
+      reps: e.reps,
+      seconds: e.seconds,
+      rest: e.category === "strength" ? 60 : 30,
+      ...(e.bpm ? { bpm: e.bpm } : {}),
+    })),
+  };
 }
 
 export async function aiCreateWorkout(goal: string, library: Exercise[]): Promise<Workout> {

@@ -91,29 +91,33 @@ async function callOnce(
  * A key whose quota is exhausted (429/5xx) is skipped in favour of the next one.
  * Returns the index of the key that worked so the client can prefer it next time.
  */
+export async function askWithKeys(
+  provider: z.infer<typeof Providers>,
+  keys: readonly string[],
+  baseUrl: string | undefined,
+  model: string,
+  system: string,
+  prompt: string,
+): Promise<{ text: string; keyIndex: number }> {
+  let last: unknown = null;
+  for (let i = 0; i < keys.length; i++) {
+    try {
+      const text = await callOnce(provider, keys[i]!, baseUrl || undefined, model, system, prompt);
+      return { text, keyIndex: i };
+    } catch (e) {
+      // Quota/dead-key errors: try the next key. Anything without a status fails fast.
+      if (statusOf(e) == null) throw e;
+      last = e;
+    }
+  }
+  throw last instanceof Error ? last : new Error("Лимиты исчерпаны на всех ключах.");
+}
+
 export const askAi = createServerFn({ method: "POST" })
   .validator((d) => Input.parse(d))
-  .handler(async ({ data }) => {
-    let last: unknown = null;
-    for (let i = 0; i < data.keys.length; i++) {
-      try {
-        const text = await callOnce(
-          data.provider,
-          data.keys[i]!,
-          data.baseUrl || undefined,
-          data.model,
-          data.system,
-          data.prompt,
-        );
-        return { text, keyIndex: i };
-      } catch (e) {
-        // Quota/dead-key errors: try the next key. Anything without a status fails fast.
-        if (statusOf(e) == null) throw e;
-        last = e;
-      }
-    }
-    throw last instanceof Error ? last : new Error("Лимиты исчерпаны на всех ключах.");
-  });
+  .handler(async ({ data }) =>
+    askWithKeys(data.provider, data.keys, data.baseUrl || undefined, data.model, data.system, data.prompt),
+  );
 
 // ---------- Health check (cheap: lists models, no generation) ----------
 
