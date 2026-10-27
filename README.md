@@ -88,3 +88,26 @@ cd <repository-name>
 npm i
 npm run dev
 ```
+
+## Android
+
+The Android project uses Capacitor and is opened in Android Studio. Configure
+`JAVA_HOME` to the JDK bundled with Android Studio (for example,
+`C:\Program Files\Android\Android Studio\jbr`) and add `%JAVA_HOME%\bin` to
+`Path`. Android Studio's SDK should be installed; `android/local.properties`
+points Gradle to the local SDK.
+
+After changing the web app, rebuild and copy its assets into the Android
+project, then open Android Studio:
+
+```sh
+npm run android:sync
+npm run android:open
+```
+
+In Android Studio, build or run the `android` project on a connected device or
+emulator. Run `android:sync` again whenever the web app changes.
+
+The APK bundles the web UI, not the TanStack server runtime. Features that call
+server functions (AI, article import, and FFmpeg conversion) require a deployed
+server endpoint and are not provided by the standalone APK alone.

@@ -189,3 +189,36 @@ Spending:
 - Browser: buy day-off → skip a planned day → walk shows protection consumed;
   sick marking flow; repair flow; chest animation; progression bump visible in
   player; shop at 390/1440; zero console errors.
+
+---
+
+# Android build fix
+
+## Goal
+
+Make the current web app build usable as bundled Capacitor assets for the existing Android Studio project, so an Android APK includes the latest app instead of stale assets.
+
+## Steps
+
+1. Restore the Vite/TanStack Start configuration from the last committed version, then configure a production output that contains a valid `index.html` and client assets in Capacitor's configured `webDir` (`.output/public`). Preserve the existing web development flow.
+2. Add package scripts for the Android workflow: build the web app, synchronize the generated assets with Android, and open the project in Android Studio.
+3. Keep the existing Capacitor app ID, name, Android project, and local-only SDK configuration unchanged. Document the commands and required JDK/Android SDK environment.
+4. Verify the web build output, run Capacitor sync, and build the Android debug APK using the installed Android Studio JDK. Run the relevant typecheck/lint/tests if configuration changes affect them.
+
+## Expected files
+
+- `vite.config.ts` — undo the uncommitted static/SSR override and configure the supported production output.
+- `package.json` — add Android build/sync scripts without changing package manager or dependencies.
+- `README.md` — document the Android Studio workflow and environment requirements.
+- `docs/plan.md` — this plan.
+
+## Risks
+
+- TanStack Start's current server-rendered output may not be directly bundleable as a standalone Capacitor app. The chosen configuration must produce a valid client entry point without breaking the existing web app.
+- The standalone APK bundles the web UI, not the TanStack server runtime. AI, article import, and FFmpeg server functions require a deployed server endpoint.
+- The current `android/app/src/main/assets/public` is stale; synchronization must replace it with the freshly built assets before APK creation.
+- Android build requires a JDK and Android SDK configured on the local machine. This repository's `android/local.properties` is machine-specific and must not be committed.
+
+## Outcome
+
+Approved and implemented: the SPA shell is emitted as `.output/public/index.html`, and the Android sync/build path was verified. Typecheck and tests passed; lint completed with existing warnings.
