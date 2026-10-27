@@ -39,15 +39,15 @@ function InsertZone({ onInsert, hidden }: { onInsert: () => void; hidden: boolea
       onClick={onInsert}
       aria-label="Добавить шаг в это место"
       className={cn(
-        "flex h-11 w-full shrink-0 items-center gap-2 text-muted-foreground/40 transition-colors hover:text-primary focus-visible:text-primary",
+        "group/iz flex h-8 w-full shrink-0 items-center gap-3 px-3 text-muted-foreground/35 transition-colors hover:text-primary focus-visible:text-primary",
         hidden && "hidden",
       )}
     >
-      <span className="h-px flex-1 border-t border-dashed border-border" />
-      <span className="flex h-7 w-7 items-center justify-center rounded-full border border-dashed border-border">
-        <Plus className="h-4 w-4" />
+      <span className="h-px flex-1 border-t border-dashed border-border transition-colors group-hover/iz:border-primary/50" />
+      <span className="flex h-6 w-6 items-center justify-center rounded-full">
+        <Plus className="h-3.5 w-3.5" />
       </span>
-      <span className="h-px flex-1 border-t border-dashed border-border" />
+      <span className="h-px flex-1 border-t border-dashed border-border transition-colors group-hover/iz:border-primary/50" />
     </button>
   );
 }
@@ -144,7 +144,7 @@ export function PlanEditor() {
         }}
       >
         <SortableContext items={steps} strategy={verticalListSortingStrategy}>
-          <div className="space-y-1">
+          <div className="flex flex-col">
             {steps.map((step, i) => {
               const w = s.workouts.find((x) => x.id === step.workoutId);
               return (
