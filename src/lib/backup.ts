@@ -190,7 +190,7 @@ export function applyBackup(
       patch.workouts = byId(s.workouts, p.workouts);
       // Keep the current plan unless there is none yet.
       const hasSteps = (pl?: Plan) => !!pl && pl.steps.length > 0;
-      patch.plan = hasSteps(s.plan) ? s.plan : (p.plan as Plan | undefined) ?? initialState.plan;
+      patch.plan = hasSteps(s.plan) ? s.plan : ((p.plan as Plan | undefined) ?? initialState.plan);
     } else if (id === "vacations") {
       const key = (v: { start: string; end: string }) => v.start + v.end;
       const have = new Set(s.vacations.map(key));

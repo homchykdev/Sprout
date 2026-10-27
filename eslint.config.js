@@ -6,7 +6,9 @@ import reactRefresh from "eslint-plugin-react-refresh";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["dist", ".output", ".vinxi"] },
+  // Generated / vendored code is never linted: the MediAPIpe wasm loader and
+  // Capacitor bundles used to make `eslint .` take minutes.
+  { ignores: ["dist", ".output", ".vinxi", "public/**", "android/**", ".playwright-mcp/**"] },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     files: ["**/*.{ts,tsx}"],

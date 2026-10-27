@@ -7,8 +7,10 @@ const tap = cva(
   {
     variants: {
       variant: {
-        primary: "bg-primary text-primary-foreground shadow-[0_4px_0_var(--primary-shade)] active:shadow-[0_1px_0_var(--primary-shade)]",
-        flame: "bg-flame text-primary-foreground shadow-[0_4px_0_var(--flame-shade)] active:shadow-[0_1px_0_var(--flame-shade)]",
+        primary:
+          "bg-primary text-primary-foreground shadow-[0_4px_0_var(--primary-shade)] active:shadow-[0_1px_0_var(--primary-shade)]",
+        flame:
+          "bg-flame text-primary-foreground shadow-[0_4px_0_var(--flame-shade)] active:shadow-[0_1px_0_var(--flame-shade)]",
         sky: "bg-sky text-primary-foreground shadow-[0_4px_0_var(--sky-shade)] active:shadow-[0_1px_0_var(--sky-shade)]",
         soft: "bg-card text-foreground border-2 border-border shadow-[0_3px_0_var(--border)] active:shadow-[0_0_0_var(--border)]",
         ghost: "text-muted-foreground hover:bg-muted active:translate-y-0",
@@ -25,9 +27,12 @@ const tap = cva(
   },
 );
 
-export interface TapButtonProps extends ButtonHTMLAttributes<HTMLButtonElement>, VariantProps<typeof tap> {}
+export interface TapButtonProps
+  extends ButtonHTMLAttributes<HTMLButtonElement>, VariantProps<typeof tap> {}
 
-export const TapButton = forwardRef<HTMLButtonElement, TapButtonProps>(({ className, variant, size, ...p }, ref) => (
-  <button ref={ref} className={cn(tap({ variant, size }), className)} {...p} />
-));
+export const TapButton = forwardRef<HTMLButtonElement, TapButtonProps>(
+  ({ className, variant, size, ...p }, ref) => (
+    <button ref={ref} className={cn(tap({ variant, size }), className)} {...p} />
+  ),
+);
 TapButton.displayName = "TapButton";

@@ -1,11 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { SEED_EXERCISES, SEED_WORKOUTS } from "./seed";
-import {
-  DEFAULT_PLAN_SETTINGS,
-  defaultPlan,
-  planFromSchedule,
-} from "./plan";
+import { DEFAULT_PLAN_SETTINGS, defaultPlan, planFromSchedule } from "./plan";
 import { DEFAULT_FFMPEG_OPTIONS, DEFAULT_FFMPEG_OUT } from "./video-rules";
 import { DEFAULT_PHOTO_REMINDER, type PhotoReminderSettings } from "./photo-reminders";
 import {
@@ -203,11 +199,14 @@ export function migrateState(p: Partial<AppState>, from: number): Partial<AppSta
   if (from < 8) {
     const origin = p.plan?.origin ?? p.since ?? new Date().toISOString().slice(0, 10);
     const legacy = (p as Record<string, unknown>)["schedule"] as
-      | { days: number[]; rotation: string[]; rotationIndex: number }
-      | undefined;
+      { days: number[]; rotation: string[]; rotationIndex: number } | undefined;
     const persistedPlan = p.plan as Plan | undefined;
     out.plan = persistedPlan
-      ? { ...defaultPlan(), ...persistedPlan, settings: { ...DEFAULT_PLAN_SETTINGS, ...(persistedPlan.settings ?? {}) } }
+      ? {
+          ...defaultPlan(),
+          ...persistedPlan,
+          settings: { ...DEFAULT_PLAN_SETTINGS, ...(persistedPlan.settings ?? {}) },
+        }
       : {
           steps: planFromSchedule(
             legacy ?? { days: [0, 2, 4], rotation: [], rotationIndex: 0 },

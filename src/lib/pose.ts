@@ -87,10 +87,7 @@ export function framesFor(mode: CaptureMode): PoseSpec[] {
   const views: PoseView[] = ["front", "side", "back"];
   if (mode === "views") return views.map((v) => poseSpec(v, "relaxed"));
   if (mode === "poses") return views.map((v) => poseSpec(v, "flexed"));
-  return [
-    ...views.map((v) => poseSpec(v, "relaxed")),
-    ...views.map((v) => poseSpec(v, "flexed")),
-  ];
+  return [...views.map((v) => poseSpec(v, "relaxed")), ...views.map((v) => poseSpec(v, "flexed"))];
 }
 
 /** Keeps the last frame on screen for the «призрак» overlay. */
@@ -101,5 +98,4 @@ export function samePose(a: PoseFrame, b: PoseFrame): boolean {
 export const isPoseView = (v: unknown): v is PoseView =>
   v === "front" || v === "side" || v === "back";
 
-export const isPoseStrain = (v: unknown): v is PoseStrain =>
-  v === "relaxed" || v === "flexed";
+export const isPoseStrain = (v: unknown): v is PoseStrain => v === "relaxed" || v === "flexed";

@@ -24,17 +24,15 @@ const sess = (iso: string, extra: Partial<SessionLog> = {}): SessionLog => ({
 });
 
 // Plan-cycle builder: "w" workout day, "r" rest day.
-const state = (
-  opts: {
-    sessions: SessionLog[];
-    vacations?: Vacation[];
-    steps?: ("w" | "r")[];
-    origin?: string;
-    bonusMax?: number;
-    freezeMax?: number;
-    restoreDays?: number;
-  },
-): PlanInput => ({
+const state = (opts: {
+  sessions: SessionLog[];
+  vacations?: Vacation[];
+  steps?: ("w" | "r")[];
+  origin?: string;
+  bonusMax?: number;
+  freezeMax?: number;
+  restoreDays?: number;
+}): PlanInput => ({
   sessions: opts.sessions,
   vacations: opts.vacations ?? [],
   plan: {
@@ -150,23 +148,21 @@ describe("planProgress: protection order", () => {
   });
   it("a spent bonus returns to the pool after bonusRestoreDays", () => {
     const now = new Date("2026-10-19T18:00:00");
-    const s = state(
-      {
-        sessions: [
-          sess("2026-10-05T10:00"),
-          sess("2026-10-06T10:00"),
-          sess("2026-10-07T10:00"),
-          sess("2026-10-08T10:00"),
-          sess("2026-10-12T10:00"),
-          sess("2026-10-13T10:00"),
-          sess("2026-10-14T10:00"),
-        ],
-        steps: [...W_THU],
-        bonusMax: 1,
-        freezeMax: 0,
-        restoreDays: 2,
-      },
-    );
+    const s = state({
+      sessions: [
+        sess("2026-10-05T10:00"),
+        sess("2026-10-06T10:00"),
+        sess("2026-10-07T10:00"),
+        sess("2026-10-08T10:00"),
+        sess("2026-10-12T10:00"),
+        sess("2026-10-13T10:00"),
+        sess("2026-10-14T10:00"),
+      ],
+      steps: [...W_THU],
+      bonusMax: 1,
+      freezeMax: 0,
+      restoreDays: 2,
+    });
     const p = planProgress(s, now); // 15 spent the bonus; by 17 it returned → pool free
     expect(p.streak).toBe(7);
     expect(p.breakAt).toBe(null);

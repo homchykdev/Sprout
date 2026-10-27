@@ -27,8 +27,7 @@ export const Route = createFileRoute("/profile")({
   component: Profile,
 });
 
-const CAP =
-  "text-xs font-bold uppercase tracking-wider text-muted-foreground";
+const CAP = "text-xs font-bold uppercase tracking-wider text-muted-foreground";
 
 function Profile() {
   const s = useApp();
@@ -131,7 +130,10 @@ function Avatar() {
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="center" className="min-w-48 rounded-2xl">
-          <DropdownMenuItem className="min-h-[44px] text-[15px]" onSelect={() => file.current?.click()}>
+          <DropdownMenuItem
+            className="min-h-[44px] text-[15px]"
+            onSelect={() => file.current?.click()}
+          >
             <Upload className="h-4 w-4" /> Загрузить фото
           </DropdownMenuItem>
           {blob && (
@@ -166,7 +168,10 @@ function Placeholder() {
   const name = useApp((s) => s.name);
   const ch = (name.trim()[0] ?? "💪").toUpperCase();
   return (
-    <span aria-hidden className="flex h-full w-full items-center justify-center text-4xl font-extrabold text-primary-shade">
+    <span
+      aria-hidden
+      className="flex h-full w-full items-center justify-center text-4xl font-extrabold text-primary-shade"
+    >
       {ch}
     </span>
   );

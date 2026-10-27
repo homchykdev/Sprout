@@ -72,10 +72,12 @@ describe("analyzePose", () => {
   });
 
   it("asks to move when the body is too small, too close or off-center", () => {
-    expect(analyzePose(makePose({ top: 0.28, bottom: 0.62 }), "front", "relaxed").problems).toContain(
-      "too-small",
+    expect(
+      analyzePose(makePose({ top: 0.28, bottom: 0.62 }), "front", "relaxed").problems,
+    ).toContain("too-small");
+    expect(analyzePose(makePose({ top: 0.02 }), "front", "relaxed").problems).toContain(
+      "offscreen",
     );
-    expect(analyzePose(makePose({ top: 0.02 }), "front", "relaxed").problems).toContain("offscreen");
     expect(analyzePose(makePose({ cx: 0.8 }), "front", "relaxed").problems).toContain("off-center");
   });
 
@@ -83,7 +85,9 @@ describe("analyzePose", () => {
     expect(analyzePose(makePose({ visibility: 0.1 }), "front", "relaxed").problems).toEqual([
       "partial",
     ]);
-    expect(analyzePose(makePose({ wristY: 0.7 }), "front", "flexed").problems).toContain("arms-low");
+    expect(analyzePose(makePose({ wristY: 0.7 }), "front", "flexed").problems).toContain(
+      "arms-low",
+    );
     expect(analyzePose(makePose({ wristY: 0.35 }), "front", "flexed").problems).toEqual([]);
   });
 

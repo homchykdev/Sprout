@@ -25,7 +25,9 @@ export function defaultPlan(workouts: Workout[] = []): Plan {
   return { steps, origin, settings: { ...DEFAULT_PLAN_SETTINGS } };
 }
 
-export type PlanInput = Pick<AppState, "sessions" | "plan" | "vacations"> & { workouts?: Workout[] };
+export type PlanInput = Pick<AppState, "sessions" | "plan" | "vacations"> & {
+  workouts?: Workout[];
+};
 
 export type PlanStatus =
   | "done" // planned day closed by a session
@@ -86,7 +88,10 @@ export function planProgress(state: PlanInput, now = new Date()): PlanProgress {
   let freeze = 0;
   let streak = 0;
   let breakAt: string | null = null;
-  let wPlanned = 0, wDone = 0, wQuestSum = 0, wQuestDays = 0;
+  let wPlanned = 0,
+    wDone = 0,
+    wQuestSum = 0,
+    wQuestDays = 0;
   const totalDays = Math.max(0, daysBetween(state.plan.origin, now));
   const bonusBusy = (d: Date) =>
     bonusRefs.filter((r) => daysBetween(r, d) < bonusRestoreDays).length;
@@ -118,7 +123,8 @@ export function planProgress(state: PlanInput, now = new Date()): PlanProgress {
       continue;
     }
     if (k === dayKey(now)) continue; // today still pending: never counted, never breaks
-    if (bonusBusy(d) < c) bonusRefs.push(k); // bonus keeps the streak, adds nothing
+    if (bonusBusy(d) < c)
+      bonusRefs.push(k); // bonus keeps the streak, adds nothing
     else if (freeze >= 1) freeze--;
     else {
       streak = 0;

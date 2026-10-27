@@ -11,15 +11,26 @@ export function BodyMap({ load }: { load: Record<MuscleKey, number> }) {
   const data: IExerciseData[] = (Object.keys(load) as MuscleKey[])
     .filter((m) => heatLevel(load[m]) > 0)
     .map((m) => ({ name: m, muscles: [m as Muscle], frequency: heatLevel(load[m]) }));
-  const onClick = ({ muscle }: { muscle: Muscle }) => setPicked(muscle in MUSCLES ? (muscle as MuscleKey) : null);
+  const onClick = ({ muscle }: { muscle: Muscle }) =>
+    setPicked(muscle in MUSCLES ? (muscle as MuscleKey) : null);
   const svgStyle = { cursor: "pointer" };
   return (
     <div>
       <div className="grid grid-cols-2 gap-4">
         {(["anterior", "posterior"] as const).map((t) => (
           <div key={t} className="flex flex-col items-center gap-2">
-            <Model type={t} data={data} bodyColor="var(--heat-0)" highlightedColors={COLORS} onClick={onClick} style={{ width: "100%", maxWidth: 170 }} svgStyle={svgStyle} />
-            <span className="text-xs font-medium text-muted-foreground">{t === "anterior" ? "Спереди" : "Сзади"}</span>
+            <Model
+              type={t}
+              data={data}
+              bodyColor="var(--heat-0)"
+              highlightedColors={COLORS}
+              onClick={onClick}
+              style={{ width: "100%", maxWidth: 170 }}
+              svgStyle={svgStyle}
+            />
+            <span className="text-xs font-medium text-muted-foreground">
+              {t === "anterior" ? "Спереди" : "Сзади"}
+            </span>
           </div>
         ))}
       </div>
@@ -35,7 +46,11 @@ export function BodyMap({ load }: { load: Record<MuscleKey, number> }) {
       <div className="mt-3 flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground">
         <span>Отдых</span>
         {[0, 1, 2, 3, 4].map((l) => (
-          <span key={l} className="h-2.5 w-6 rounded-full" style={{ background: `var(--heat-${l})` }} />
+          <span
+            key={l}
+            className="h-2.5 w-6 rounded-full"
+            style={{ background: `var(--heat-${l})` }}
+          />
         ))}
         <span>Макс.</span>
       </div>

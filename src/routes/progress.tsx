@@ -44,7 +44,11 @@ export function ProgressOverview() {
     <div className="space-y-5">
       <Celebrate show={party} />
       <div className="flex items-center gap-2 pt-2">
-        <Link to="/profile" className="press -ml-2 rounded-full p-2 hover:bg-muted" aria-label="Назад">
+        <Link
+          to="/profile"
+          className="press -ml-2 rounded-full p-2 hover:bg-muted"
+          aria-label="Назад"
+        >
           <ArrowLeft />
         </Link>
         <h1 className="text-3xl font-extrabold tracking-tight">Прогресс</h1>

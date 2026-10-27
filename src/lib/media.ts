@@ -144,9 +144,7 @@ async function squareImage(file: Blob): Promise<Blob> {
   if (!ctx) return file;
   ctx.drawImage(bmp, (bmp.width - s) / 2, (bmp.height - s) / 2, s, s, 0, 0, 512, 512);
   bmp.close();
-  return new Promise((res) =>
-    c.toBlob((b) => res(b ?? file), "image/jpeg", 0.85),
-  );
+  return new Promise((res) => c.toBlob((b) => res(b ?? file), "image/jpeg", 0.85));
 }
 
 export async function setAvatarPhoto(file: Blob) {

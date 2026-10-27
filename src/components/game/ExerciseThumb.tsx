@@ -11,7 +11,9 @@ export function useExerciseMedia(id?: string) {
     let on = true;
     setM(null);
     if (id) getMedia(id).then((x) => on && setM(x ?? null));
-    return () => { on = false; };
+    return () => {
+      on = false;
+    };
   }, [id]);
   return m;
 }
@@ -21,12 +23,59 @@ export function ExerciseThumb({ ex, className }: { ex: Exercise; className?: str
   const m = useExerciseMedia(ex.mediaId);
   const blobUrl = useBlobUrl(m?.blob);
   const [bad, setBad] = useState(false);
-  const box = cn("flex shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-muted text-2xl", className);
+  const box = cn(
+    "flex shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-muted text-2xl",
+    className,
+  );
   const cover = "h-full w-full object-cover";
-  if (m && blobUrl) return <span className={box}>{m.kind === "image" ? <img src={blobUrl} alt="" className={cover} /> : <video src={blobUrl + "#t=0.5"} muted playsInline preload="metadata" className={cover} />}</span>;
+  if (m && blobUrl)
+    return (
+      <span className={box}>
+        {m.kind === "image" ? (
+          <img src={blobUrl} alt="" className={cover} />
+        ) : (
+          <video src={blobUrl + "#t=0.5"} muted playsInline preload="metadata" className={cover} />
+        )}
+      </span>
+    );
   const k = ex.videoUrl && !bad ? parseLink(ex.videoUrl) : null;
-  if (k?.type === "youtube") return <span className={box}><img src={ytThumb(k.id)} alt="" loading="lazy" className={cover} onError={() => setBad(true)} /></span>;
-  if (k?.type === "image") return <span className={box}><img src={k.url} alt="" loading="lazy" referrerPolicy="no-referrer" className={cover} onError={() => setBad(true)} /></span>;
-  if (k?.type === "video") return <span className={box}><video src={k.url + "#t=0.5"} muted playsInline preload="metadata" className={cover} onError={() => setBad(true)} /></span>;
+  if (k?.type === "youtube")
+    return (
+      <span className={box}>
+        <img
+          src={ytThumb(k.id)}
+          alt=""
+          loading="lazy"
+          className={cover}
+          onError={() => setBad(true)}
+        />
+      </span>
+    );
+  if (k?.type === "image")
+    return (
+      <span className={box}>
+        <img
+          src={k.url}
+          alt=""
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          className={cover}
+          onError={() => setBad(true)}
+        />
+      </span>
+    );
+  if (k?.type === "video")
+    return (
+      <span className={box}>
+        <video
+          src={k.url + "#t=0.5"}
+          muted
+          playsInline
+          preload="metadata"
+          className={cover}
+          onError={() => setBad(true)}
+        />
+      </span>
+    );
   return <span className={box}>{ex.emoji || "🏋️"}</span>;
 }
