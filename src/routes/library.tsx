@@ -1,9 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Plus, Search, Sparkles, Trash2, Youtube } from "lucide-react";
+import { Globe, Plus, Search, Sparkles, Trash2, Youtube } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AiYoutubeTab } from "@/components/game/AiYoutubeTab";
+import { ArticleImportTab } from "@/components/game/ArticleImportTab";
 import { blankExercise, ExerciseEditor } from "@/components/game/ExerciseEditor";
 import { TapButton } from "@/components/game/TapButton";
 import { ExerciseThumb } from "@/components/game/ExerciseThumb";
@@ -46,6 +47,7 @@ export function LibraryContent() {
   const [edit, setEdit] = useState<Exercise | null>(null);
   const [aiOpen, setAiOpen] = useState(false);
   const [ytOpen, setYtOpen] = useState(false);
+  const [artOpen, setArtOpen] = useState(false);
   const needsKeys = (open: () => void) => () =>
     ai.keys.length ? open() : toast("Добавьте ИИ-ключ в Настройках");
 
@@ -69,6 +71,9 @@ export function LibraryContent() {
         </TapButton>
         <TapButton size="sm" variant="flame" onClick={needsKeys(() => setAiOpen(true))}>
           <Sparkles className="h-4 w-4" /> ИИ
+        </TapButton>
+        <TapButton size="sm" variant="soft" onClick={needsKeys(() => setArtOpen(true))}>
+          <Globe className="h-4 w-4" /> Из статьи
         </TapButton>
       </div>
       <label className="flex items-center gap-2 rounded-2xl border-2 bg-card px-4">
@@ -152,7 +157,21 @@ export function LibraryContent() {
         }}
       />
       <AiYoutubeDialog open={ytOpen} onClose={() => setYtOpen(false)} />
+      <ArticleDialog open={artOpen} onClose={() => setArtOpen(false)} />
     </div>
+  );
+}
+
+function ArticleDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-h-[85vh] overflow-y-auto rounded-3xl">
+        <DialogHeader>
+          <DialogTitle>Импорт упражнений из статьи</DialogTitle>
+        </DialogHeader>
+        <ArticleImportTab onClose={onClose} />
+      </DialogContent>
+    </Dialog>
   );
 }
 

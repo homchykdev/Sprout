@@ -116,7 +116,14 @@ export async function askWithKeys(
 export const askAi = createServerFn({ method: "POST" })
   .validator((d) => Input.parse(d))
   .handler(async ({ data }) =>
-    askWithKeys(data.provider, data.keys, data.baseUrl || undefined, data.model, data.system, data.prompt),
+    askWithKeys(
+      data.provider,
+      data.keys,
+      data.baseUrl || undefined,
+      data.model,
+      data.system,
+      data.prompt,
+    ),
   );
 
 // ---------- Health check (cheap: lists models, no generation) ----------

@@ -42,11 +42,8 @@ export const fetchArticle = createServerFn({ method: "POST" })
     }
     if (!res.ok) {
       if (res.status === 401 || res.status === 403)
-        throw new Error(
-          "Сайт запрещает автоматическое чтение статей. Попробуйте другой источник.",
-        );
-      if (res.status === 404)
-        throw new Error("Страница не найдена (404). Проверьте ссылку.");
+        throw new Error("Сайт запрещает автоматическое чтение статей. Попробуйте другой источник.");
+      if (res.status === 404) throw new Error("Страница не найдена (404). Проверьте ссылку.");
       throw new Error(`Сайт ответил ошибкой ${res.status}.`);
     }
     const html = (await res.text()).slice(0, MAX_HTML_BYTES);

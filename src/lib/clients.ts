@@ -1,6 +1,7 @@
 import { aiSplitWorkout, askAi, pingAi } from "./ai.functions";
 import { promoteKey } from "./ai-keys";
 import { fetchArticle } from "./article.functions";
+import type { ParsedArticleEx } from "./article";
 import { ffmpegPing } from "./ffmpeg.functions";
 import { useApp, uid } from "./store";
 import {
@@ -259,7 +260,7 @@ export async function aiImproveExercise(ex: Exercise, wish: string) {
 
 // ---------- Import from a blog article ----------
 
-export type ArticleExercise = Awaited<ReturnType<typeof aiImportArticle>>[number];
+export type ArticleExercise = ParsedArticleEx;
 
 /**
  * Splits a fitness blog article into exercises. The page is fetched in a server

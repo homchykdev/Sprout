@@ -27,7 +27,8 @@ function isHidden(el: ParsedElement): boolean {
 
 function classifyMedia(url: string): MediaKind {
   const k = parseLink(url);
-  if (!k || k.type === "iframe") return /kinescope\.io\/(?:embed\/)?[\w-]+$/i.test(url) ? "kinescope" : "iframe";
+  if (!k || k.type === "iframe")
+    return /kinescope\.io\/(?:embed\/)?[\w-]+$/i.test(url) ? "kinescope" : "iframe";
   if (k.type === "youtube") return "youtube";
   if (k.type === "vimeo") return "vimeo";
   if (k.type === "video") return "video";
@@ -40,7 +41,10 @@ function videoSrc(el: ParsedElement): string {
 }
 
 function oneLine(s: string): string {
-  return s.replace(/[^\S\n]+/g, " ").replace(/ ?\n ?/g, "\n").trim();
+  return s
+    .replace(/[^\S\n]+/g, " ")
+    .replace(/ ?\n ?/g, "\n")
+    .trim();
 }
 
 /**
@@ -91,7 +95,8 @@ export function cleanArticleText(
       const tag = node.tagName?.toLowerCase() ?? "";
       if (isHidden(node)) continue;
       if (tag === "br") text += "\n";
-      else if (tag === "img") text += marker(node.getAttribute("src") ?? node.getAttribute("data-src") ?? "");
+      else if (tag === "img")
+        text += marker(node.getAttribute("src") ?? node.getAttribute("data-src") ?? "");
       else if (tag === "video") text += marker(videoSrc(node));
       else if (tag === "iframe") text += marker(node.getAttribute("src") ?? "");
       else if (HEADING.test(tag)) {
@@ -149,7 +154,12 @@ export type ParsedArticleEx = Omit<z.infer<typeof ArticleExJson>, "media" | "mod
 export function parseArticleResponse(raw: string, media: MediaRef[]): ParsedArticleEx[] {
   let parsedModel: unknown;
   try {
-    parsedModel = JSON.parse(raw.replace(/^```(?:json)?/m, "").replace(/```$/m, "").trim());
+    parsedModel = JSON.parse(
+      raw
+        .replace(/^```(?:json)?/m, "")
+        .replace(/```$/m, "")
+        .trim(),
+    );
   } catch {
     throw new Error("Модель вернула упражнения в неверном формате. Попробуйте ещё раз.");
   }

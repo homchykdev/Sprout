@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { ARTICLE_SYSTEM, articlePrompt, cleanArticleText, parseArticleResponse } from "../article";
+import {
+  ARTICLE_SYSTEM,
+  articlePrompt,
+  cleanArticleText,
+  parseArticleResponse,
+  type MediaRef,
+} from "../article";
 
 const BASE = "https://fitstars.ru/blog/test";
 
@@ -117,7 +123,7 @@ describe("parseArticleResponse", () => {
 
   it("tolerates code fences", () => {
     const out = parseArticleResponse(
-      '```json\n' + JSON.stringify({ exercises: [{ name: "Кошка", media: [3] }] }) + "\n```",
+      "```json\n" + JSON.stringify({ exercises: [{ name: "Кошка", media: [3] }] }) + "\n```",
       media,
     );
     expect(out[0]!.videoUrl).toBe("https://fitstars.ru/img/prilozhenie.jpg");
