@@ -126,7 +126,11 @@ function PlanContent() {
         </div>
       </section>
       <section className="card-soft p-5">
-        <h2 className="font-bold">Прогноз на {fc.length} дней</h2>
+        <h2 className="font-bold">План на {fc.length} дней</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Как цикл ложится на ближайший месяц: эмодзи — день тренировки, 🛏️ — отдых. Цвет показывает
+          результат дня.
+        </p>
         <div className="mt-3 grid grid-cols-10 gap-1.5">
           {fc.map((info) => {
             const w = s.workouts.find((x) => x.id === info.step?.workoutId);
@@ -151,6 +155,21 @@ function PlanContent() {
               </span>
             );
           })}
+        </div>
+        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1.5">
+            <span aria-hidden className="h-3 w-3 rounded bg-flame" /> сделал
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span aria-hidden className="h-3 w-3 rounded border-2 border-dashed border-flame" />{" "}
+            планирует сегодня
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span aria-hidden className="h-3 w-3 rounded bg-primary-soft" /> впереди
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span aria-hidden className="h-3 w-3 rounded bg-muted" /> отдых · отпуск · пропуск
+          </span>
         </div>
       </section>
 
