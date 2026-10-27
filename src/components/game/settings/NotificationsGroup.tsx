@@ -142,7 +142,7 @@ export function NotificationsGroup() {
           </label>
           <p className="text-sm text-muted-foreground">
             {slots.length
-              ? `Сегодня ~${slots.length} нап${slots.length === 1 ? "оминание" : "оминаний"}: ${slots.map(formatHM).join(", ")}. ${kind === "rest" ? "День отдыха — только один дружелюбный пинг." : "К концу окна напоминания становятся настойчивее."}`
+              ? `Сегодня ${slots.length} нап${slots.length === 1 ? "оминание" : slots.length < 5 ? "оминания" : "оминаний"}: ${slots.map(formatHM).join(", ")}. ${kind === "rest" ? "День отдыха — только один дружелюбный пинг." : "К концу окна напоминания становятся настойчивее."}`
               : "Напоминания выключены."}
           </p>
         </>
