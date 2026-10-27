@@ -10,6 +10,7 @@ import {
   type PlanStep,
   type AiSettings,
   type Exercise,
+  type Feedback,
   type SessionLog,
   type Vacation,
   type Workout,
@@ -67,8 +68,12 @@ interface Actions {
   set: (p: Partial<AppState>) => void;
   upsertExercise: (e: Exercise) => void;
   deleteExercise: (id: string) => void;
+  /** Saves the user's difficulty/like feedback for an exercise (empty object clears it). */
+  rateExercise: (id: string, feedback: Feedback) => void;
   upsertWorkout: (w: Workout) => void;
   deleteWorkout: (id: string) => void;
+  /** Saves the user's difficulty/like feedback for a workout (empty object clears it). */
+  rateWorkout: (id: string, feedback: Feedback) => void;
   /** Inserts a plan cycle step after the given index (use -1 to prepend). */
   addPlanStep: (afterIndex: number, step: PlanStep) => void;
   removePlanStep: (stepId: string) => void;
@@ -131,6 +136,19 @@ export const useApp = create<AppState & Actions>()(
             : [e, ...s.exercises],
         })),
       deleteExercise: (id) => set((s) => ({ exercises: s.exercises.filter((x) => x.id !== id) })),
+      rateExercise: (id, feedback) =>
+        set((s) => ({
+          exercises: s.exercises.map((x) =>
+            x.id === id
+              ? {
+                  ...x,
+                  feedback: Object.keys(feedback).length
+                    ? { ...x.feedback, ...feedback }
+                    : undefined,
+                }
+              : x,
+          ),
+        })),
       upsertWorkout: (w) =>
         set((s) => ({
           workouts: s.workouts.some((x) => x.id === w.id)
@@ -138,6 +156,19 @@ export const useApp = create<AppState & Actions>()(
             : [...s.workouts, w],
         })),
       deleteWorkout: (id) => set((s) => ({ workouts: s.workouts.filter((x) => x.id !== id) })),
+      rateWorkout: (id, feedback) =>
+        set((s) => ({
+          workouts: s.workouts.map((x) =>
+            x.id === id
+              ? {
+                  ...x,
+                  feedback: Object.keys(feedback).length
+                    ? { ...x.feedback, ...feedback }
+                    : undefined,
+                }
+              : x,
+          ),
+        })),
       /** Adds a step to the plan: a workout day or a rest day. */
       addPlanStep: (afterIndex, step) =>
         set((s) => ({
@@ -168,7 +199,7 @@ export const useApp = create<AppState & Actions>()(
     }),
     {
       name: "pulse-fit-v1",
-      version: 10,
+      version: 11,
       migrate: (persisted, from) =>
         migrateState(persisted as Partial<AppState>, from) as AppState & Actions,
     },
@@ -178,7 +209,7 @@ export const useApp = create<AppState & Actions>()(
 export const uid = () =>
   Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
 
-/** v1 -> v2: legacy muscle keys become body-map muscles; fill new fields. v2 -> v3: badges/medals seen + sound theme. v3 -> v4: single ai.apiKey becomes ai.keys array. v4 -> v5: ffmpegKey for cloud video conversion. v5 -> v6: tunable ffmpegOptions/ffmpegOut. v6 -> v7: MuscleWiki removed (mwKey dropped, "musclewiki" sources become custom). v7 -> v8: weekly schedule becomes the repeating plan cycle. v8 -> v9: progress-photo reminders. v9 -> v10: `onboarded` flag — existing installs skip the welcome wizard. */
+/** v1 -> v2: legacy muscle keys become body-map muscles; fill new fields. v2 -> v3: badges/medals seen + sound theme. v3 -> v4: single ai.apiKey becomes ai.keys array. v4 -> v5: ffmpegKey for cloud video conversion. v5 -> v6: tunable ffmpegOptions/ffmpegOut. v6 -> v7: MuscleWiki removed (mwKey dropped, "musclewiki" sources become custom). v7 -> v8: weekly schedule becomes the repeating plan cycle. v8 -> v9: progress-photo reminders. v9 -> v10: `onboarded` flag — existing installs skip the welcome wizard. v10 -> v11: user feedback (difficulty 1-10 + like/dislike) on exercises/workouts — optional fields, nothing to backfill. */
 export function migrateState(p: Partial<AppState>, from: number): Partial<AppState> {
   const out: Partial<AppState> = { ...p };
   // Fresh installs (unknown version) start the wizard; upgrades keep the old behaviour.

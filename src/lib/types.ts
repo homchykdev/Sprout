@@ -23,6 +23,15 @@ export type MuscleKey = keyof typeof MUSCLES;
 export const CATEGORIES = { strength: "Сила", cardio: "Кардио", stretch: "Растяжка" } as const;
 export type Category = keyof typeof CATEGORIES;
 
+/** Difficulty 1 (very easy) .. 10 (brutal) as rated by the user. */
+export type Difficulty = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
+
+/** User's subjective feedback used to steer AI plan generation. */
+export interface Feedback {
+  difficulty?: Difficulty | undefined;
+  verdict?: "like" | "dislike" | undefined;
+}
+
 export interface Exercise {
   id: string;
   name: string;
@@ -43,6 +52,8 @@ export interface Exercise {
   /** User-uploaded photo/video stored on device (media.ts). */
   mediaId?: string | undefined;
   emoji?: string | undefined;
+  /** User's difficulty rating + like/dislike, fed back into AI generation. */
+  feedback?: Feedback | undefined;
   source: "seed" | "custom" | "ai";
 }
 
@@ -61,6 +72,8 @@ export interface Workout {
   name: string;
   emoji: string;
   items: WorkoutItem[];
+  /** User's difficulty rating + like/dislike of the workout as a whole. */
+  feedback?: Feedback | undefined;
 }
 
 export interface SessionLog {

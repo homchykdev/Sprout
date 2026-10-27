@@ -4,6 +4,7 @@ import { beep, fanfare, primeAudio, speak, stopSpeech } from "@/lib/voice";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { DiaryForm } from "@/components/game/DiaryForm";
+import { FeedbackEditor } from "@/components/game/FeedbackEditor";
 import { ConfettiOverlay } from "@/components/game/Celebrate";
 import { Mascot } from "@/components/game/Mascot";
 import { LinkMedia } from "@/components/game/LinkMedia";
@@ -15,7 +16,7 @@ import { signedVideo } from "@/lib/clients";
 import { MOTIVATION } from "@/lib/game";
 import { dueToday, planProgress } from "@/lib/plan";
 import { useApp, uid } from "@/lib/store";
-import type { Exercise, SessionLog, WorkoutItem } from "@/lib/types";
+import type { Difficulty, Exercise, Feedback, SessionLog, WorkoutItem } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/play/$workoutId")({
@@ -537,8 +538,62 @@ function Summary({
       <div className="animate-rise mt-4 w-full" style={{ animationDelay: "0.9s" }}>
         <DiaryForm sessionId={log.id} />
       </div>
+      <div className="animate-rise mt-3 w-full" style={{ animationDelay: "1s" }}>
+        <WorkoutFeedback workoutId={log.workoutId} />
+      </div>
       <TapButton size="lg" className="mt-4 w-full" onClick={onDone}>
         Продолжить
+      </TapButton>
+    </div>
+  );
+}
+
+/** Post-workout rating: difficulty + like/dislike, saved to the workout for AI planning. */
+function WorkoutFeedback({ workoutId }: { workoutId: string }) {
+  const workout = useApp((s) => s.workouts.find((w) => w.id === workoutId));
+  const [saved, setSaved] = useState(false);
+  const [pending, setPending] = useState<{
+    difficulty?: Difficulty | undefined;
+    verdict?: "like" | "dislike" | undefined;
+  }>(() => ({
+    difficulty: workout?.feedback?.difficulty,
+    verdict: workout?.feedback?.verdict,
+  }));
+  if (!workout) return null;
+  return (
+    <div className="card-soft w-full p-5 text-left">
+      <p className="font-bold">Оцените тренировку</p>
+      <p className="text-sm text-muted-foreground">Учитывается при планировании тренировок от ИИ</p>
+      <div className="mt-3">
+        <FeedbackEditor
+          value={pending.difficulty}
+          onChange={(difficulty) => {
+            setPending((p) => ({ ...p, difficulty }));
+            setSaved(false);
+          }}
+          isLike={
+            pending.verdict === "like" ? true : pending.verdict === "dislike" ? false : undefined
+          }
+          onVerdict={(verdict) => {
+            setPending((p) => ({ ...p, verdict }));
+            setSaved(false);
+          }}
+        />
+      </div>
+      <TapButton
+        variant="soft"
+        size="sm"
+        className="mt-3 min-h-[44px] w-full"
+        onClick={() => {
+          const fb: Feedback | undefined =
+            pending.difficulty === undefined && pending.verdict === undefined
+              ? undefined
+              : { difficulty: pending.difficulty, verdict: pending.verdict };
+          useApp.getState().rateWorkout(workoutId, fb ?? {});
+          setSaved(true);
+        }}
+      >
+        {saved ? "Спасибо! ✓" : "Сохранить оценку"}
       </TapButton>
     </div>
   );

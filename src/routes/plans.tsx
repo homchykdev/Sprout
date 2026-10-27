@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PlanEditor } from "@/components/plans/PlanEditor";
 import { TapButton } from "@/components/game/TapButton";
+import { FeedbackEditor, cleanFeedback, toParts } from "@/components/game/FeedbackEditor";
 import { aiCreateWorkout } from "@/lib/clients";
 import { forecast, nextWorkout, planProgress } from "@/lib/plan";
 import { useApp, uid } from "@/lib/store";
@@ -256,6 +257,8 @@ function PlansContent() {
                   </p>
                   <p className="text-xs text-muted-foreground">
                     {w.items.length} упр. · ~{estimateMinutes(w, s.exercises)} мин
+                    {w.feedback?.difficulty ? ` · ${w.feedback.difficulty}/10` : ""}
+                    {w.feedback?.verdict ? ` · ${w.feedback.verdict === "like" ? "👍" : "👎"}` : ""}
                   </p>
                 </div>
                 <button
@@ -490,6 +493,16 @@ function WorkoutEditor({ value, onClose }: { value: Workout | null; onClose: () 
             <Plus className="h-4 w-4" /> Добавить упражнение
           </TapButton>
         )}
+        <div>
+          <p className="mb-2 text-sm font-semibold text-muted-foreground">
+            Моя оценка — учитывается при составлении тренировок от ИИ
+          </p>
+          <FeedbackEditor
+            {...toParts(w.feedback)}
+            onChange={(d) => setW({ ...w, feedback: cleanFeedback(w.feedback, { difficulty: d }) })}
+            onVerdict={(v) => setW({ ...w, feedback: cleanFeedback(w.feedback, { verdict: v }) })}
+          />
+        </div>
         <div className="flex gap-2">
           {workouts.some((x) => x.id === w.id) && (
             <TapButton

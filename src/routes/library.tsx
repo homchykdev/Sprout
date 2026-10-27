@@ -108,6 +108,23 @@ export function LibraryContent() {
                 {CATEGORIES[e.category]} · {e.muscles.map((m) => MUSCLES[m]).join(", ")}
                 {e.bpm ? ` · ♩${e.bpm}` : ""}
               </p>
+              {(e.feedback?.difficulty || e.feedback?.verdict) && (
+                <p className="flex items-center gap-1 text-xs font-semibold">
+                  {e.feedback.verdict && (
+                    <span
+                      className={cn(
+                        e.feedback.verdict === "like" ? "text-primary-shade" : "text-destructive",
+                      )}
+                      title={e.feedback.verdict === "like" ? "Нравится" : "Не нравится"}
+                    >
+                      {e.feedback.verdict === "like" ? "👍" : "👎"}
+                    </span>
+                  )}
+                  {e.feedback.difficulty && (
+                    <span className="text-muted-foreground">{e.feedback.difficulty}/10</span>
+                  )}
+                </p>
+              )}
             </div>
             <button
               aria-label="Удалить"

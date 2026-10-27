@@ -2,6 +2,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { ImagePlus, Sparkles, Trash2 } from "lucide-react";
 import { addFiles, removeMedia } from "@/lib/media";
+import { FeedbackEditor, cleanFeedback, toParts } from "./FeedbackEditor";
 import { ExerciseThumb } from "./ExerciseThumb";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { aiImproveExercise } from "@/lib/clients";
@@ -245,6 +246,16 @@ export function ExerciseEditor({
               onChange={(clips) => up({ clips: clips.length ? clips : undefined })}
             />
           )}
+          <div>
+            <p className="mb-2 text-sm font-semibold text-muted-foreground">
+              Моя оценка — учитывается при составлении тренировок от ИИ
+            </p>
+            <FeedbackEditor
+              {...toParts(ex.feedback)}
+              onChange={(d) => up({ feedback: cleanFeedback(ex.feedback, { difficulty: d }) })}
+              onVerdict={(v) => up({ feedback: cleanFeedback(ex.feedback, { verdict: v }) })}
+            />
+          </div>
           <div className="flex gap-2">
             {hasAi && (
               <TapButton

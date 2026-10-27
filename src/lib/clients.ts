@@ -139,8 +139,44 @@ function sanitizeExercise(j: ExerciseJson, base?: Partial<Exercise>): Exercise {
 
 const SYS = "Ты — опытный тренер. Отвечай строго валидным JSON на русском языке, кратко и по делу.";
 
+/** Short feedback hint appended for rated exercises: difficulty and like/dislike. */
+export function feedbackSuffix(e: Exercise): string {
+  const f = e.feedback;
+  if (!f) return "";
+  const parts = [
+    f.difficulty ? `сложность: ${f.difficulty}/10` : "",
+    f.verdict ? (f.verdict === "like" ? "лайк" : "дизлайк") : "",
+  ].filter(Boolean);
+  return parts.length ? ` (${parts.join(", ")})` : "";
+}
+
+/** How many liked/disliked exercises and how hard the user finds the library (1..10). */
+export function feedbackSummary(library: Exercise[]): string {
+  const rated = library.filter((e) => e.feedback);
+  if (!rated.length) return "";
+  const withDiff = rated.filter((e) => e.feedback?.difficulty);
+  const likes = rated.filter((e) => e.feedback?.verdict === "like").length;
+  const dislikes = rated.filter((e) => e.feedback?.verdict === "dislike").length;
+  const avg = withDiff.length
+    ? withDiff.reduce((s, e) => s + (e.feedback?.difficulty ?? 0), 0) / withDiff.length
+    : null;
+  const parts = [
+    avg ? `средняя ощущаемая сложность: ${avg.toFixed(1)}/10` : "",
+    `лайков: ${likes}`,
+    `дизлайков: ${dislikes}`,
+  ].filter(Boolean);
+  return parts.join(", ");
+}
+
 export async function aiCreateExercise(request: string) {
-  const j = await ask(SYS, `Создай упражнение по запросу: "${request}". Верни JSON: ${EX_SCHEMA}`);
+  const summary = feedbackSummary(useApp.getState().exercises);
+  const taste = summary
+    ? ` Учитывай вкусы пользователя: ${summary}. Дизлайкнутые типы нагрузки делай мягче или не предлагай без нужды, целевая сложность нового упражнения — близко к его оценкам.`
+    : "";
+  const j = await ask(
+    SYS,
+    `Создай упражнение по запросу: "${request}".${taste} Верни JSON: ${EX_SCHEMA}`,
+  );
   return sanitizeExercise(j);
 }
 
@@ -222,11 +258,17 @@ export async function aiImproveExercise(ex: Exercise, wish: string) {
 
 export async function aiCreateWorkout(goal: string, library: Exercise[]): Promise<Workout> {
   const lib = library
-    .map((e) => `${e.id}|${e.name}|${e.category}|${e.mode}|${e.muscles.join(",")}`)
+    .map(
+      (e) => `${e.id}|${e.name}|${e.category}|${e.mode}|${e.muscles.join(",")}${feedbackSuffix(e)}`,
+    )
     .join("\n");
+  const summary = feedbackSummary(library);
+  const taste = summary
+    ? `\nОщущения пользователя по оценкам (${summary}). Учитывай это: упражнения с дизлайком исключай, но подбирай мягкую альтернативу на те же мышцы; лайкаемые — используй; сложность тренировки подбирай под оценки пользователя (если оценки низкие — усложняй объёмом, если высокие — вставляй больше отдыха и лёгких вариантов).`
+    : "";
   const j = await ask(
     SYS,
-    `Составь тренировку. Цель: "${goal}". Используй ТОЛЬКО упражнения из библиотеки (id|название|категория|режим|мышцы):\n${lib}\nНачни с разминки, закончи растяжкой. Верни JSON: {"name":string,"emoji":string,"items":[{"exerciseId":string,"sets":number,"reps":number,"seconds":number,"rest":number}]}`,
+    `Составь тренировку. Цель: "${goal}". Используй ТОЛЬКО упражнения из библиотеки (id|название|категория|режим|мышцы[|-feedback]):\n${lib}\n${taste}\nНачни с разминки, закончи растяжкой. Верни JSON: {"name":string,"emoji":string,"items":[{"exerciseId":string,"sets":number,"reps":number,"seconds":number,"rest":number}]}`,
   );
   const ids = new Set(library.map((e) => e.id));
   interface WorkoutItemJson {

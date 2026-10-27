@@ -1,84 +1,67 @@
-# План: переработка редактора плана (Тренировки → План)
+# Plan: user feedback (difficulty 1–10 + like/dislike) feeding into AI plan generation
 
-**Дата:** 2026-10-27
-**Статус:** на согласование
+## Goal
+- User can rate **difficulty 1–10** and set **like/dislike** for every exercise and every workout.
+- AI plan/workout generation (`aiCreateWorkout`, `aiCreateExercise`) receives this feedback and adapts.
 
-## Проблема
+## Data model
+`src/lib/types.ts`:
+```ts
+export type Rating = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
+export type Feedback = { difficulty?: Rating | undefined; verdict?: "like" | "dislike" | undefined };
+```
+- `Exercise` gets `feedback?: Feedback | undefined`.
+- `Workout` gets `feedback?: Feedback | undefined` (evaluated as a whole, after full completion; per-session logs stay untouched).
+- Optional fields follow the existing `x?: T | undefined` exactOptional pattern.
 
-Таб «План» (`PlanContent` в `src/routes/plans.tsx`) сейчас неудобен:
+## Store
+`src/lib/store.ts`:
+- Bump persist `version: 10 → 11`; add migration doc-line + `if (from < 11) {}` — nothing to fill (fields optional), so the block only guarantees future-proof defaults. `migrateState` untouched fields pass through; `importAll` path still works.
+- New actions:
+  - `rateExercise(exerciseId, feedback: Feedback)` — sets/updates `feedback` on the exercise (allows clearing via empty object).
+  - `rateWorkout(workoutId, feedback: Feedback)` — same for a workout.
+  Both write through `upsertExercise`/`upsertWorkout` internals (targeted `set` on the matching id).
+- Backup/export (`src/lib/backup.ts`): fields ride on `exercises` / `workouts` sections automatically; verify v2 export & merge import include them (no schema change expected).
 
-1. Перестановка шагов только стрелками ▲/▼ по одной позиции — при длинном цикле очень медленно.
-2. Добавление всегда в конец списка — нельзя вставить тренировку в середину или начало цикла.
-3. Диалог добавления (`PlanStepAdder`) — плоский список всех тренировок без поиска: с ростом библиотеки переполнится.
-4. Удаление ✕ без подтверждения.
-5. Каждая строка перегружена кнопками (▲ ▼ ✕ + номер) — 3 из 4 кнопок мелкие.
-6. `plans.tsx` — 658 строк, редактор плана надо выносить в компоненты.
+## AI integration (`src/lib/clients.ts`)
+- In `aiCreateWorkout(goal, library)`: extend the per-exercise library lines passed into the prompt:
+  `id|name|category|mode|muscles|difficulty:1-10|verdict` — e.g. `ex_12|Приседания|strength|reps|quads|8|like`.
+  Only rated exercises get the suffix; unrated stay as-is.
+- Extend `SYS`/prompt text: "Учитывай оценку сложности (1–10) и вердикт (лайк/дизлайк): упражнения с дизлайком исключай; disliked muscle groups/activity types снижай; сложность новой тренировки таргетируй в диапазон 5–7, опираясь на оценки пользователя (если всё было «слишком легко» — повышай)."
+- `aiCreateExercise`: pass compact feedback context (count of likes/dislikes + avg difficulty of user's library) so a new exercise matches the user's taste.
+- `sanitizeExercise` / response filter unchanged (feedback is input-only).
 
-## Решения (согласованы)
+## UI
 
-- **Модель данных не меняем:** план — повторяющийся цикл шагов (`PlanStep[]`), «день» = шаг. Без миграций БД (store version остаётся 10).
-- **DnD:** новая зависимость `@dnd-kit/core` + `@dnd-kit/sortable` (~10kb gzip) — touch, клавиатура и screen-reader из коробки.
-- **Удаление:** подтверждение через AlertDialog (shadcn).
-- **Добавление:** bottom sheet на `vaul` (уже в deps) с поиском — вместо Dialog.
+### Exercises (`src/components/game/ExerciseEditor.tsx` + `src/routes/library.tsx`)
+- New shared component `src/components/game/FeedbackEditor.tsx` (props: `value: Feedback, onChange, title`):
+  - Slider (shadcn `Slider`, `min=1 max=10 step=1`) for difficulty with live value label ("Сложность: 7/10 — тяжело" mapping via labels array).
+  - Like/Dislike pair: two `TapButton`s with lucide `ThumbsUp`/`ThumbsDown`, toggle behavior (tap again = clear), semantic `aria-pressed`, ≥44px targets.
+- `ExerciseEditor` gets a "Моя оценка" section embedding `FeedbackEditor`, wired to store on save (or immediately, matching the editor's inline-update pattern used there).
+- Library list rows (`library.tsx`): small passive badges — 👍/👎 icon + difficulty dot (e.g. `7/10` chip) — visible at a glance, tappable to jump into rating.
 
-## Новый UX
+### Workouts
+- `src/routes/plans.tsx` workout cards: same badges + entry to a `FeedbackEditor` in a small `Dialog` (reuse exercise editor pattern).
+- `src/routes/play.$workoutId.tsx`: at session end, `DiaryForm`/finish screen gains "Оцените тренировку" (`FeedbackEditor`) → `rateWorkout` on finish. This is the natural moment the user can judge difficulty.
 
-### Список цикла (PlanEditor)
-- Вертикальный sortable-список карточек шагов (dnd-kit + `verticalListSortingStrategy`).
-- Ручка перетаскивания `GripVertical` слева на карточке (touch-таргет ≥44px); порядок меняется и клавиатурой (dnd-kit sortable keyboard), остальные карточки плавно разъезжаются (transform-only, ease-out 150–200ms, уважение `prefers-reduced-motion`).
-- Во время dragging: вставочные кнопки скрываются, карточка-оригинал полупрозрачная (ориг. `DragOverlay`), лёгкий подъем тени.
-- Стрелки ▲/▼ убраны. Остаётся: ручка + ✕ + бейдж номера позиции.
+## Tests (`*.test.tsx`, Vitest + RTL)
+- Store: `rateExercise`/`rateWorkout` set and clear feedback; migrate from v10 fixture keeps data.
+- `clients.ts`: prompt for `aiCreateWorkout` contains `difficulty`/`verdict` suffixes for rated exercises and not for unrated; disliked included in prompt (model decides), sanitize untouched.
+- UI: `FeedbackEditor` toggles like→dislike→clear; slider emits 1–10; exercise editor saves feedback.
+- Existing feedback-free prompts unaffected.
 
-### Вставка (＋ между всеми карточками)
-- Тонкие тappable-зоны `＋` (высота ≥44px) между каждой парой карточек, а также в начале списка — вставка ровно в это место (`addPlanStep(afterIndex, …)` уже умеет).
-- Вставочные зоны видны всегда, но приглушены; при drag скрываются.
-- Тап `＋` → открывается `StepInsertSheet` с запомненным `afterIndex`.
+## Definition of done
+`pnpm typecheck && pnpm lint && pnpm test && pnpm build`, then dev-server walk via browser tools: rate exercise → badges update → AI workout prompt preview shows feedback; rate workout after session; screenshots 390/1440; zero console errors.
 
-### StepInsertSheet (vaul bottom sheet)
-- Во всю высоту мобильного экрана, sticky-хедер с поиском.
-- Сверху быстрые чипы: «🛏 День отдыха» (вставляет rest-шаг, sheet не закрывается активно — закрывается) + 3–4 недавно использованных тренировок.
-- Ниже — сгруппированный поиск по всем тренировкам (по имени, без тегов пока нет; фильтр `name.includes(query)`).
-- Пустой результат поиска → «Ничего не найдено» + кнопка «Создать тренировку» → навигация в редактор тренировок.
-- Recents: локальный `useState` в родителе (не персистим — не критичные данные).
+## Steps (each committed)
+1. types + store actions + migration (v11) + tests.
+2. `FeedbackEditor` component + tests.
+3. Wire into `ExerciseEditor` + library badges.
+4. Wire into plans route + post-session workout rating.
+5. AI prompt extension in `clients.ts` + prompt tests.
+6. Backup verification, full DoD pass, report.
 
-### Удаление
-- ✕ на карточке → shadcn `AlertDialog` «Убрать "X" из плана?» (для rest — «Убрать день отдыха?»). Пункт не удаляет саму тренировку из библиотеки — только из цикла.
-- Если тренировка шага удалена из библиотеки (`w == null`, «Нет тренировки») — карточка помечается предупреждением, удалить можно тем же способом.
-
-### Пустое состояние
-- Когда `steps.length === 0`: карточка-заглушка с CTA «Добавить первый шаг» (открывает sheet с `afterIndex = -1`), вместо текущего пустого списка + строки «План пуст».
-
-## Изменения файлов
-
-| Файл | Что делаем |
-|---|---|
-| `package.json` | + `@dnd-kit/core`, `@dnd-kit/sortable` (причина: стандарт accessible sortable, ~10kb) |
-| `src/lib/store.ts` | + экшен `reorderPlanStep(from, to)` (splice); `movePlanStep` оставляем (используется стрелками в `PlansContent`-редакторе? проверить; если нигде — удалить вместе с ▲/▼) |
-| `src/components/plans/PlanEditor.tsx` | **новый:** DndContext + SortableContext + рендер строк + insert-зоны + AlertDialog удаления |
-| `src/components/plans/PlanStepRow.tsx` | **новый:** одна карточка шага (useSortable, ручка, ✕, бейдж) |
-| `src/components/plans/StepInsertSheet.tsx` | **новый:** vaul-диалог с поиском, чипами recents, rest-кнопкой, «Создать тренировку» |
-| `src/components/ui/alert-dialog.tsx` | добавить через shadcn MCP/CLI (если отсутствует) |
-| `src/routes/plans.tsx` | удалить `PlanContent`+`PlanStepAdder` (переезд), вставить `<PlanEditor/>`; файл похудеет до ~350 строк |
-
-## Шаги
-
-1. `pnpm add @dnd-kit/core @dnd-kit/sortable` — проверить версию lockfile-менеджера (pnpm; lockfile не редактируем руками).
-2. Store: добавить `reorderPlanStep(from, to)`; проверить оставшихся вызовов `movePlanStep` — если никого, удалить экшен вместе со стрелками.
-3. Добавить `alert-dialog` через shadcn MCP.
-4. `PlanStepRow` + `PlanEditor` (dnd + insert-зоны + подтверждение удаления) — вынести из `PlanContent`.
-5. `StepInsertSheet` (vaul + поиск + recents + rest).
-6. Пересобрать `plans.tsx` на новые компоненты, удалить старый код, пустое состояние.
-7. Тесты Vitest: `reorderPlanStep` (края массива, перестановка, пустой список), вставка `addPlanStep` при `afterIndex = -1` (в начало).
-8. DoD: `pnpm typecheck && pnpm lint && pnpm test && pnpm build`; dev-server + Playwright: drag карточки шага, вставка в середину, удаление с подтверждением, поиск в sheet, пустое состояние; скриншоты 390px и 1440px; консоль чистая.
-
-## Риски
-
-- **dnd-kit + мобильный скролл:** конфлик тап/драг на touch. Решение: драг активируется только за ручку (`dragHandle` в listeners на ручке, не на всей карточке) + `touch-action: none` только на ручке.
-- **Прогноз и `ProtectionBar` под списком** перерисовываются при каждом dnd-тикане — мемоизировать `forecast`/`planProgress` (`useMemo` по `steps`).
-- **vaul + активные Dialog** одновременно: не открывать sheet поверх AlertDialog (взаимоисключающие состояния).
-- **Dnd-анимация** не должна блокировать input — стандартное поведение dnd-kit ок; `prefers-reduced-motion` отключает переходы карточек.
-
-## Out of scope
-
-- Возврат к модели «дни недели» (согласовано: остаёмся на цикле).
-- Много тренировок в один день, переименование шагов, drag на десктопе мышью за всё тело карточки (не ручку) — отдельно, если попросишь.
+## Risks
+- Prompt bloat if library is large → only rated exercises get suffix, cap line length.
+- Like/dislike could over-prune AI choices → prompt explicitly says dislike = "avoid, but suggest a milder alternative", not hard ban in phrasing.
+- Store migration: fields optional, so risk is minimal; test v10→v11 path.
