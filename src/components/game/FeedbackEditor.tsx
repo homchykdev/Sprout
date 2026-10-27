@@ -28,12 +28,23 @@ export function FeedbackEditor({ value, onChange, isLike, onVerdict }: Props) {
   return (
     <div className="space-y-3 rounded-2xl border-2 bg-card p-3">
       <div>
-        <p className="text-sm font-semibold text-muted-foreground">
-          Сложность:{" "}
-          <span className="tabular" aria-live="polite">
-            {value ? `${value}/10 — ${HINTS[value]}` : "не оценено"}
-          </span>
-        </p>
+        <div className="flex items-baseline justify-between gap-2">
+          <p className="text-sm font-semibold text-muted-foreground">
+            Сложность:{" "}
+            <span className="tabular" aria-live="polite">
+              {value ? `${value}/10 — ${HINTS[value]}` : "не оценено"}
+            </span>
+          </p>
+          {value !== undefined && (
+            <button
+              className="press shrink-0 rounded-full px-2 py-1 text-xs font-semibold text-muted-foreground hover:bg-muted"
+              onClick={() => onChange(undefined)}
+              aria-label="Убрать оценку сложности"
+            >
+              Убрать
+            </button>
+          )}
+        </div>
         <Slider
           className="mt-3"
           thumbClassName="h-6 w-6 border-2"

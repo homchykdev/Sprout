@@ -68,6 +68,11 @@ describe("cleanFeedback", () => {
       difficulty: 5,
     });
   });
+  it("clears difficulty, keeps verdict (difficulty is optional)", () => {
+    expect(cleanFeedback({ difficulty: 5, verdict: "like" }, { difficulty: undefined })).toEqual({
+      verdict: "like",
+    });
+  });
   it("undefined when nothing is set", () => {
     expect(cleanFeedback(undefined, { verdict: undefined })).toBeUndefined();
   });
