@@ -7,6 +7,7 @@ import { useApp } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { usePhotoReminders } from "@/hooks/usePhotoReminder";
 import { Mascot } from "./Mascot";
+import { Onboarding } from "./onboarding/Onboarding";
 import { VacationButton } from "./VacationButton";
 import { useReminders } from "./useReminders";
 
@@ -25,6 +26,7 @@ const TABS = [
 export function AppShell({ children }: { children: ReactNode }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
+  const onboarded = useApp((s) => s.onboarded);
   const { pathname } = useLocation();
   const immersive = pathname.startsWith("/play") || pathname.startsWith("/capture");
 
@@ -34,6 +36,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         <Mascot size={90} />
       </div>
     );
+  // Welcome wizard on first launch only (persist flag); replaces the whole chrome.
+  if (!immersive && !onboarded) return <Onboarding />;
   if (immersive) return <>{children}</>;
   return <Chrome pathname={pathname}>{children}</Chrome>;
 }
