@@ -2,9 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
   ArrowDown,
   ArrowUp,
-  BedDouble,
   ChevronRight,
-  Flame,
   Pencil,
   Play,
   Plus,
@@ -15,6 +13,7 @@ import {
 import { useState } from "react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { PlanEditor } from "@/components/plans/PlanEditor";
 import { TapButton } from "@/components/game/TapButton";
 import { aiCreateWorkout } from "@/lib/clients";
 import { forecast, nextWorkout, planProgress } from "@/lib/plan";
@@ -122,65 +121,8 @@ function PlanContent() {
         <p className="mt-1 text-sm text-muted-foreground">
           Повторяется от даты старта. Выстроенная последовательность — твой месяц и далее.
         </p>
-        <div className="mt-4 space-y-2">
-          {s.plan.steps.map((step, i) => {
-            const w = s.workouts.find((x) => x.id === step.workoutId);
-            return (
-              <div
-                key={step.id}
-                className={cn(
-                  "flex items-center gap-2 rounded-2xl border-2 p-2.5",
-                  step.kind === "workout" ? "border-primary/30 bg-card" : "bg-muted/60",
-                )}
-              >
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary-soft text-lg">
-                  {step.kind === "workout" ? (w?.emoji ?? "❓") : <BedDouble className="h-5 w-5" />}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-semibold">
-                    {step.kind === "workout" ? (w?.name ?? "Нет тренировки") : "День отдыха"}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {w && step.kind === "workout"
-                      ? `${w.items.length} упр. · ~${estimateMinutes(w, s.exercises)} мин`
-                      : "Восстановление"}
-                  </p>
-                </div>
-                <TapButton
-                  size="icon"
-                  variant="ghost"
-                  disabled={i === 0}
-                  aria-label="Выше"
-                  onClick={() => s.movePlanStep(step.id, -1)}
-                >
-                  <ArrowUp className="h-4 w-4" />
-                </TapButton>
-                <TapButton
-                  size="icon"
-                  variant="ghost"
-                  disabled={i === s.plan.steps.length - 1}
-                  aria-label="Ниже"
-                  onClick={() => s.movePlanStep(step.id, 1)}
-                >
-                  <ArrowDown className="h-4 w-4" />
-                </TapButton>
-                <TapButton
-                  size="icon"
-                  variant="ghost"
-                  aria-label="Удалить"
-                  onClick={() => s.removePlanStep(step.id)}
-                >
-                  <X className="h-4 w-4" />
-                </TapButton>
-                <span className="press flex h-6 w-6 items-center justify-center rounded-lg bg-muted text-xs font-bold">
-                  {i + 1}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-        <div className="mt-3 flex gap-2">
-          <PlanStepAdder />
+        <div className="mt-4">
+          <PlanEditor />
         </div>
       </section>
       <section className="card-soft p-5">
@@ -228,58 +170,6 @@ function PlanContent() {
         сейчас: {prog.streak} {prog.breakAt ? `(сломана ${prog.breakAt})` : ""}
       </p>
     </div>
-  );
-}
-
-/** Add a rest day or a workout-based step right after the recipe. */
-function PlanStepAdder() {
-  const s = useApp();
-  const [open, setOpen] = useState(false);
-  return (
-    <>
-      <div className="flex w-full gap-2">
-        <TapButton
-          variant="soft"
-          className="flex-1"
-          onClick={() =>
-            s.addPlanStep(s.plan.steps.length - 1, { id: `step-${uid()}`, kind: "rest" })
-          }
-        >
-          <BedDouble className="h-4 w-4" /> День отдыха
-        </TapButton>
-        <TapButton variant="primary" className="flex-1" onClick={() => setOpen(true)}>
-          <Flame className="h-4 w-4" /> Тренировка
-        </TapButton>
-      </div>
-      <Dialog open={open} onOpenChange={(o) => !o && setOpen(false)}>
-        <DialogContent className="rounded-3xl">
-          <DialogHeader>
-            <DialogTitle>Какая тренировка пойдёт в план?</DialogTitle>
-          </DialogHeader>
-          <div className="max-h-72 space-y-1.5 overflow-y-auto">
-            {s.workouts.map((wk) => (
-              <button
-                key={wk.id}
-                aria-label={`Добавить ${wk.name}`}
-                className="flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left hover:bg-muted"
-                onClick={() => {
-                  s.addPlanStep(s.plan.steps.length - 1, {
-                    id: `step-${uid()}`,
-                    kind: "workout",
-                    workoutId: wk.id,
-                  });
-                  setOpen(false);
-                }}
-              >
-                <span className="text-xl">{wk.emoji}</span>
-                <span className="min-w-0 flex-1 truncate font-semibold">{wk.name}</span>
-                <ChevronRight className="text-muted-foreground" />
-              </button>
-            ))}
-          </div>
-        </DialogContent>
-      </Dialog>
-    </>
   );
 }
 

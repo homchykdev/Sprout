@@ -106,7 +106,12 @@ export function Onboarding() {
             </TapButton>
           )}
           {!last && (
-            <TapButton variant="ghost" size="md" onClick={next} className={cn("mr-0 ml-auto", step === 0 && "hidden")}>
+            <TapButton
+              variant="ghost"
+              size="md"
+              onClick={next}
+              className={cn("mr-0 ml-auto", step === 0 && "hidden")}
+            >
               Пропустить
             </TapButton>
           )}

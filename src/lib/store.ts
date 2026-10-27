@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { SEED_EXERCISES, SEED_WORKOUTS } from "./seed";
-import { DEFAULT_PLAN_SETTINGS, defaultPlan, planFromSchedule } from "./plan";
+import { DEFAULT_PLAN_SETTINGS, defaultPlan, planFromSchedule, reorderSteps } from "./plan";
 import { DEFAULT_FFMPEG_OPTIONS, DEFAULT_FFMPEG_OUT } from "./video-rules";
 import { DEFAULT_PHOTO_REMINDER, type PhotoReminderSettings } from "./photo-reminders";
 import {
@@ -72,7 +72,8 @@ interface Actions {
   /** Inserts a plan cycle step after the given index (use -1 to prepend). */
   addPlanStep: (afterIndex: number, step: PlanStep) => void;
   removePlanStep: (stepId: string) => void;
-  movePlanStep: (stepId: string, delta: number) => void;
+  /** Drag-and-drop reorder: moves one step from index `from` to index `to`. */
+  reorderPlanStep: (from: number, to: number) => void;
   logSession: (s: SessionLog) => void;
   updateSession: (id: string, patch: Pick<SessionLog, "mood" | "note">) => void;
   importAll: (data: Partial<AppState>) => void;
@@ -152,17 +153,9 @@ export const useApp = create<AppState & Actions>()(
       /** Removes a step from the plan cycle. */
       removePlanStep: (stepId) =>
         set((s) => ({ plan: { ...s.plan, steps: s.plan.steps.filter((x) => x.id !== stepId) } })),
-      /** Moves a step within the plan cycle. */
-      movePlanStep: (stepId, delta) =>
-        set((s) => {
-          const idx = s.plan.steps.findIndex((x) => x.id === stepId);
-          const to = idx + delta;
-          if (idx < 0 || to < 0 || to >= s.plan.steps.length || delta === 0) return s;
-          const steps = [...s.plan.steps];
-          const [item] = steps.splice(idx, 1);
-          steps.splice(to, 0, item!);
-          return { plan: { ...s.plan, steps } };
-        }),
+      /** Moves a step within the plan cycle (drag & drop). */
+      reorderPlanStep: (from, to) =>
+        set((s) => ({ plan: { ...s.plan, steps: reorderSteps(s.plan.steps, from, to) } })),
       logSession: (log) =>
         set((s) => ({
           sessions: [...s.sessions, log],

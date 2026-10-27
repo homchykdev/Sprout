@@ -8,6 +8,7 @@ import {
   forecast,
   planFromSchedule,
   planProgress,
+  reorderSteps,
   stepForDay,
   type PlanInput,
 } from "../plan";
@@ -253,5 +254,31 @@ describe("planFromSchedule", () => {
     expect(steps.map((s) => s.kind).join()).toBe("workout,rest,workout,rest,workout");
     expect(steps[0]!.workoutId).toBe("a");
     expect(steps[2]!.workoutId).toBe("b");
+  });
+});
+
+describe("reorderSteps (drag & drop)", () => {
+  const base = ["a", "b", "c", "d"];
+
+  it("moves a step forward and backward", () => {
+    expect(reorderSteps(base, 0, 2)).toEqual(["b", "c", "a", "d"]);
+    expect(reorderSteps(base, 3, 1)).toEqual(["a", "d", "b", "c"]);
+  });
+
+  it("keeps the array when indices are equal or out of range", () => {
+    expect(reorderSteps(base, 1, 1)).toBe(base);
+    expect(reorderSteps(base, -1, 2)).toBe(base);
+    expect(reorderSteps(base, 0, 9)).toBe(base);
+    expect(reorderSteps(base, 9, 0)).toBe(base);
+  });
+
+  it("does not mutate the source array", () => {
+    const src = [...base];
+    reorderSteps(src, 0, 3);
+    expect(src).toEqual(base);
+  });
+
+  it("handles a single-step cycle", () => {
+    expect(reorderSteps(["x"], 0, 0)).toEqual(["x"]);
   });
 });
