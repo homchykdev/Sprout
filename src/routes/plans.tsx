@@ -70,7 +70,13 @@ function Plans() {
           </button>
         ))}
       </div>
-      {tab === "plan" ? <PlanContent /> : tab === "exercises" ? <LibraryContent /> : <PlansContent />}
+      {tab === "plan" ? (
+        <PlanContent />
+      ) : tab === "exercises" ? (
+        <LibraryContent />
+      ) : (
+        <PlansContent />
+      )}
     </div>
   );
 }
@@ -315,7 +321,7 @@ function PlansContent() {
           </TapButton>
         </div>
       </div>
-      <p className="-mt-3 text-sm text-muted-foreground">
+      <p className="mt-1 text-sm text-muted-foreground">
         Тренировку можно использовать в цикле плана — шаги выбирают её сами.
       </p>
 
