@@ -128,8 +128,8 @@ function PlanContent() {
       <section className="card-soft p-5">
         <h2 className="font-bold">План на {fc.length} дней</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Как цикл ложится на ближайший месяц: эмодзи — день тренировки, 🛏️ — отдых. Цвет показывает
-          результат дня.
+          Как цикл ложится на ближайший месяц: эмодзи — день тренировки, 🛏️ — отдых. Зелёный контур
+          — тренировка по плану, цвет заливки — результат дня.
         </p>
         <div className="mt-3 grid grid-cols-10 gap-1.5">
           {fc.map((info) => {
@@ -142,7 +142,8 @@ function PlanContent() {
                   "flex aspect-square items-center justify-center rounded-xl text-[10px] font-bold",
                   info.status === "done" && "bg-flame text-primary-foreground",
                   info.status === "pending" && "border-2 border-dashed border-flame",
-                  info.status === "future" && "bg-primary-soft text-primary-shade",
+                  info.status === "future" &&
+                    "border-2 border-primary/40 bg-transparent text-primary-shade",
                   info.status === "rest" && "bg-muted text-muted-foreground",
                   info.status === "vacation" && "bg-sky-soft text-sky-shade",
                   (info.status === "off" ||
@@ -165,7 +166,7 @@ function PlanContent() {
             планирует сегодня
           </span>
           <span className="flex items-center gap-1.5">
-            <span aria-hidden className="h-3 w-3 rounded bg-primary-soft" /> впереди
+            <span aria-hidden className="h-3 w-3 rounded border-2 border-primary/40" /> по плану
           </span>
           <span className="flex items-center gap-1.5">
             <span aria-hidden className="h-3 w-3 rounded bg-muted" /> отдых · отпуск · пропуск
