@@ -38,6 +38,8 @@ export interface AppState {
   /** Day (yyyy-MM-dd) the photo reminder was already sent. */
   lastPhotoNotified: string;
   since: string;
+  /** Welcome wizard shown once; existing installs migrate to `true`. */
+  onboarded: boolean;
   voice: VoiceSettings;
   /** Badge ids already celebrated (confetti shown once). */
   badgesSeen: string[];
@@ -99,6 +101,7 @@ export const initialState: AppState = {
   photoReminder: { ...DEFAULT_PHOTO_REMINDER },
   lastPhotoNotified: "",
   since: "",
+  onboarded: false,
   voice: {
     enabled: true,
     muted: false,
@@ -172,7 +175,7 @@ export const useApp = create<AppState & Actions>()(
     }),
     {
       name: "pulse-fit-v1",
-      version: 9,
+      version: 10,
       migrate: (persisted, from) =>
         migrateState(persisted as Partial<AppState>, from) as AppState & Actions,
     },
@@ -182,9 +185,11 @@ export const useApp = create<AppState & Actions>()(
 export const uid = () =>
   Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
 
-/** v1 -> v2: legacy muscle keys become body-map muscles; fill new fields. v2 -> v3: badges/medals seen + sound theme. v3 -> v4: single ai.apiKey becomes ai.keys array. v4 -> v5: ffmpegKey for cloud video conversion. v5 -> v6: tunable ffmpegOptions/ffmpegOut. v6 -> v7: MuscleWiki removed (mwKey dropped, "musclewiki" sources become custom). v7 -> v8: weekly schedule becomes the repeating plan cycle. v8 -> v9: progress-photo reminders. */
+/** v1 -> v2: legacy muscle keys become body-map muscles; fill new fields. v2 -> v3: badges/medals seen + sound theme. v3 -> v4: single ai.apiKey becomes ai.keys array. v4 -> v5: ffmpegKey for cloud video conversion. v5 -> v6: tunable ffmpegOptions/ffmpegOut. v6 -> v7: MuscleWiki removed (mwKey dropped, "musclewiki" sources become custom). v7 -> v8: weekly schedule becomes the repeating plan cycle. v8 -> v9: progress-photo reminders. v9 -> v10: `onboarded` flag — existing installs skip the welcome wizard. */
 export function migrateState(p: Partial<AppState>, from: number): Partial<AppState> {
   const out: Partial<AppState> = { ...p };
+  // Fresh installs (unknown version) start the wizard; upgrades keep the old behaviour.
+  if (typeof out.onboarded !== "boolean") out.onboarded = from > 0;
   delete (out as Record<string, unknown>)["mwKey"];
   delete (out as Record<string, unknown>)["schedule"];
   if (out.exercises)
