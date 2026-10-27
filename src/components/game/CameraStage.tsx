@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Camera, Eye, EyeOff, SkipForward, X } from "lucide-react";
-import { captureJpeg, motionScore, sampleGray, stopStream, cameraConstraints } from "@/lib/capture";
+import { Camera, Eye, EyeOff, SkipForward, SwitchCamera, X } from "lucide-react";
+import {
+  captureJpeg,
+  motionScore,
+  sampleGray,
+  stopStream,
+  cameraConstraints,
+  type CameraFacing,
+} from "@/lib/capture";
 import { useBlobUrl, type MediaItem } from "@/lib/media";
 import type { PoseSpec } from "@/lib/pose";
 import {
@@ -37,6 +44,8 @@ export function CameraStage({ frame, step, total, ghost, onCaptured, onSkip, onE
   const [attempt, setAttempt] = useState(0);
   const [ghostOn, setGhostOn] = useState(true);
   const [countdown, setCountdown] = useState<number | null>(null);
+  const [facing, setFacing] = useState<CameraFacing>("user");
+  const [twoCams, setTwoCams] = useState(false);
   const cdRef = useRef(false);
   const shotRef = useRef(false);
   const ghostUrl = useBlobUrl(ghost?.blob);
@@ -45,7 +54,7 @@ export function CameraStage({ frame, step, total, ghost, onCaptured, onSkip, onE
     if (shotRef.current) return;
     shotRef.current = true;
     try {
-      const blob = await captureJpeg(videoRef.current!, true);
+      const blob = await captureJpeg(videoRef.current!, facing === "user");
       onCaptured(blob);
     } catch {
       shotRef.current = false;
@@ -53,12 +62,21 @@ export function CameraStage({ frame, step, total, ghost, onCaptured, onSkip, onE
       setCountdown(null);
       setError("Не удалось сделать снимок. Попробуй ещё раз.");
     }
-  }, [onCaptured]);
+  }, [onCaptured, facing]);
 
   useEffect(() => {
     speak(frame.instruction.join(" "), { interrupt: true });
     return () => stopSpeech();
   }, [frame.id, frame.instruction]);
+
+  // Desktop convenience: Esc closes the shoot without touching the shutter.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onExit();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onExit]);
 
   useEffect(() => {
     if (countdown == null) return;
@@ -88,6 +106,9 @@ export function CameraStage({ frame, step, total, ghost, onCaptured, onSkip, onE
     let lastMsg = "";
     setModel("loading");
     setError(null);
+    // A retry or camera flip must not carry over an armed auto-shutter.
+    cdRef.current = false;
+    setCountdown(null);
 
     const say = (msg: string, t: Tone) => {
       if (lastMsg === msg) return;
@@ -182,6 +203,13 @@ export function CameraStage({ frame, step, total, ghost, onCaptured, onSkip, onE
         }
         video.srcObject = stream;
         await video.play().catch(() => {});
+        // More than one video input → the flip button is worth showing.
+        navigator.mediaDevices
+          .enumerateDevices()
+          .then((ds) => {
+            if (!cancelled) setTwoCams(ds.filter((d) => d.kind === "videoinput").length > 1);
+          })
+          .catch(() => {});
         if (!cancelled) raf = requestAnimationFrame(loop);
       } catch (e) {
         if (!cancelled) setError(cameraError(e));
@@ -198,7 +226,7 @@ export function CameraStage({ frame, step, total, ghost, onCaptured, onSkip, onE
       stopSpeech();
       if (video) video.srcObject = null;
     };
-  }, [frame.view, frame.strain, attempt]);
+  }, [frame.view, frame.strain, attempt, facing]);
 
   return (
     <div className="relative flex h-[100dvh] flex-col bg-black text-white">
@@ -208,7 +236,10 @@ export function CameraStage({ frame, step, total, ghost, onCaptured, onSkip, onE
           autoPlay
           playsInline
           muted
-          className="absolute inset-0 h-full w-full scale-x-[-1] object-contain"
+          className={cn(
+            "absolute inset-0 h-full w-full object-contain",
+            facing === "user" && "scale-x-[-1]",
+          )}
         />
         {ghostUrl && ghostOn && (
           <img
@@ -220,12 +251,12 @@ export function CameraStage({ frame, step, total, ghost, onCaptured, onSkip, onE
         )}
         <PoseSilhouette view={frame.view} className="text-white/50" />
 
-        <div className="absolute inset-x-0 top-0 flex items-start gap-2 bg-gradient-to-b from-black/70 to-transparent px-3 pb-8 pt-[max(0.75rem,env(safe-area-inset-top))]">
+        <div className="absolute inset-x-0 top-0 z-10 flex items-start gap-2 bg-gradient-to-b from-black/70 to-transparent px-3 pb-8 pt-[max(0.75rem,env(safe-area-inset-top))]">
           <button
             type="button"
             aria-label="Закрыть съёмку"
             onClick={onExit}
-            className="flex h-11 w-11 items-center justify-center rounded-full bg-black/40 backdrop-blur hover:bg-black/60 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white/40"
+            className="flex h-12 w-12 items-center justify-center rounded-full border border-white/15 bg-black/50 backdrop-blur hover:bg-black/70 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white/40"
           >
             <X className="h-5 w-5" />
           </button>
@@ -247,7 +278,7 @@ export function CameraStage({ frame, step, total, ghost, onCaptured, onSkip, onE
         {countdown != null && (
           <span
             aria-hidden
-            className="absolute inset-0 flex items-center justify-center text-[112px] font-extrabold leading-none text-white drop-shadow-[0_4px_24px_rgba(0,0,0,0.55)]"
+            className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center text-[112px] font-extrabold leading-none text-white drop-shadow-[0_4px_24px_rgba(0,0,0,0.55)]"
           >
             {countdown === 0 ? "!" : countdown}
           </span>
@@ -269,7 +300,7 @@ export function CameraStage({ frame, step, total, ghost, onCaptured, onSkip, onE
         </div>
 
         {error && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/90 p-6 text-center">
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/90 p-6 pt-24 text-center">
             <p className="max-w-sm text-sm text-white/80">{error}</p>
             <button
               type="button"
@@ -278,14 +309,27 @@ export function CameraStage({ frame, step, total, ghost, onCaptured, onSkip, onE
             >
               Попробовать снова
             </button>
-            <button type="button" onClick={onExit} className="text-sm text-white/60 underline">
-              Загрузить фото файлом
+            <button
+              type="button"
+              onClick={onExit}
+              className="h-11 rounded-2xl bg-white/10 px-5 text-sm font-semibold text-white underline-offset-4 hover:bg-white/20 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white/40 focus-visible:underline"
+            >
+              Выйти из съёмки
             </button>
           </div>
         )}
       </div>
 
       <div className="flex items-center gap-2 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
+        <button
+          type="button"
+          aria-label="Переключить камеру (основная / фронтальная)"
+          disabled={!twoCams}
+          onClick={() => setFacing((f) => (f === "user" ? "environment" : "user"))}
+          className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 text-white/80 disabled:opacity-30"
+        >
+          <SwitchCamera className="h-5 w-5" />
+        </button>
         <button
           type="button"
           aria-label={ghostOn ? "Скрыть прошлое фото" : "Показать прошлое фото"}
