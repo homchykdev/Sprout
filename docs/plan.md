@@ -100,12 +100,33 @@ Spending:
   (`kind: "deload"`) automatically.
 - Old `bonusMax/bonusRestoreDays/freezeMax` semantics retire; caps move to economy.
 
-### Quest rework for the fixed plan (`src/lib/achievements.ts`)
-- Quest 1 (always): «Тренировка дня» — planned or bonus workout.
-- Quests 2–3: 2 rotating from a pool (deterministic pick per day):
-  «Растяжка 5+ подходов», «Объём 20+ подходов», «+3 подхода сверх плана»,
-  «Дневник: настроение/заметка», «Быстро: ≤20 минут», «Новая высота» (progression bump).
-- Remove the XP quest (depends on workout size, not effort). All-3 combo → +12 coins.
+### Quest rework — "усиленные квесты" (`src/lib/achievements.ts`)
+Every quest closes inside the single planned workout (or one small action after it);
+no "do another workout" demands — extra effort comes in small doses.
+- Slot 1 (always): «Тренировка дня» — planned or bonus workout, +6.
+- Slots 2–3: two quests picked **deterministically per day** from an applicability-
+  filtered pool (never impossible, never random-per-user):
+  - «+2 повторения» — one set with 2+ reps above plan (reps-mode) → verified by
+    `sets[].reps` vs the planned item.
+  - «+2 подхода сверх плана» — extra sets on any exercise (or bonus exercise) →
+    verified by `sets[].extra`.
+  - «Растяжка 5+» — 5+ stretch sets today.
+  - «Быстро: ≤20 минут» — shown only when the day's estimate fits; duration check.
+  - «Дневник» — mood or note on today's session.
+  - «Фото прогресса» — only when the photo reminder is due.
+  - «Бонусная тренировка» — rest-day slot; a second (bonus) session today.
+- All 3 done → +12 coin combo + mascot line. The XP quest is removed (depends on
+  workout size, not effort).
+- Quest progress is visible **in the player header** («+2 повторения · 0/1» with a
+  check) — like Duolingo showing quests inside the lesson.
+- Player enablers required: (1) **rep stepper** on set completion (reps mode,
+  defaults to plan, optional +/- → logged), (2) **«+ подход»** button on the rest
+  screen (appends an extra, flagged step). Optional later: bonus-exercise picker
+  in Summary. These same fields unlock future rep PRs.
+- Data: `SessionLog.sets[]` gains optional `reps?: number` and `extra?: boolean`;
+  session gains optional `metronome?: boolean` — migration-safe (old logs valid).
+- Weekly quest card («Идеальная неделя», «3 дня с доп-подходами» → chest) is a
+  candidate for a later phase, not in this batch.
 - Monthly challenge (goal 12) and weekly settlement stay as-is (plan-compatible).
 
 ### Progression (plan creation, `src/lib/plan.ts` + `plans.tsx`)
@@ -124,7 +145,8 @@ Spending:
 - New state: `coins`, `ledger: {date, item, qty, source, delta}[]`,
   `stock: {dayOff, freeze}`, `boosts`, `ownedCosmetics: string[]`, `activeCosmetic`,
   `autoDeload: boolean`, `deloadEveryWeeks: number`, `plan.progression`,
-  `Vacation.kind`.
+  `Vacation.kind`. Optional log fields (no migration risk): `sets[].reps`,
+  `sets[].extra`, session `metronome`.
 - Migration v12→v13: `bonusLeft → stock.dayOff`, `freezeLeft → stock.freeze`,
   existing vacations → `kind: "trip"`, progression defaults off, coins start at 0.
 - `backup.ts`: coins/ledger/stock/cosmetics go into the game section (v2 keeps import).
@@ -165,10 +187,13 @@ Spending:
   `src/components/game/medals.tsx`, `src/lib/__tests__/plan.economy.test.ts`,
   `src/components/game/SickDialog.tsx`.
 - Changed: `src/lib/store.ts` (v13), `src/lib/plan.ts` (ladder, sick, progression),
-  `src/lib/achievements.ts` (quest pool), `src/lib/game.ts` (deload helper),
+  `src/lib/achievements.ts` (quest pool + rotation), `src/lib/game.ts` (deload helper),
   `src/lib/backup.ts`, `src/components/game/AppShell.tsx`, `Badges.tsx`,
   `MonthlyChallenge.tsx`, `VacationButton.tsx` (kind-aware),
-  `useReminders.ts` (deload/sick notify), `routes/{index,plans,profile,achievements,play.$workoutId}.tsx`.
+  `useReminders.ts` (deload/sick notify),
+  `routes/play.$workoutId.tsx` (rep stepper, «+ подход», quest progress header,
+  progression resolver for steps),
+  `routes/{index,plans,profile,achievements}.tsx`.
 
 ## Risks
 - **Farming** (bonus workouts for coins): daily caps in economy.
@@ -176,6 +201,9 @@ Spending:
 - **Walk correctness** with stock events + repairs: dedicated tests for interleavings
   (buy-before-miss, buy-after-miss, run limits, settlement during run).
 - **Progression drift**: play route must use the same resolver as previews — tested.
+- **Quest honesty**: quests must be verifiable from logged data — the rep stepper
+  and «+ подход» ship in the same step as the quests that need them; quests whose
+  data can't exist (old logs) degrade gracefully (show as "сделай сегодня").
 - **Balance**: all numbers centralized; expect iteration after playtesting.
 - **Migration**: users keep current protections (mapped to stock); vacations get
   `kind: "trip"` — no data loss.
@@ -185,7 +213,9 @@ Spending:
 ## Verification
 - `pnpm typecheck && pnpm lint && pnpm test && pnpm build`.
 - Unit: coin pricing + caps, ladder interleavings, chest EV < price, migration
-  v12→v13, progression resolver (bump cadence, caps, time-mode), sick allowance.
+  v12→v13, progression resolver (bump cadence, caps, time-mode), sick allowance,
+  quest rotation (same day → same quests), applicability filters, combo bonus,
+  quest detection from logs (reps above plan, extra sets).
 - Browser: buy day-off → skip a planned day → walk shows protection consumed;
   sick marking flow; repair flow; chest animation; progression bump visible in
   player; shop at 390/1440; zero console errors.
