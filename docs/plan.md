@@ -302,7 +302,7 @@ Make portrait camera preview and saved photos upright and visible, restore Media
 
 ## Steps
 
-1. Use explicit canvas transforms for upright rotation and front-camera mirroring. Request the orientation-matched aspect ratio while preferring the camera's uncropped mode. Recalculate when the preview or video dimensions change, and avoid reconfiguring the camera track during screen rotation; add regression tests for constraints, transform matrices, and captured-frame sizing.
+1. Use explicit canvas transforms for upright rotation and front-camera mirroring. Request the sensor's native 3:4 aspect ratio in portrait and 4:3 in landscape, preferring uncropped camera output. Recalculate when the preview or video dimensions change, and avoid reconfiguring the camera track during screen rotation; add regression tests for constraints, transform matrices, and captured-frame sizing.
 2. Compare WASM asset contents, not only file sizes, when preparing MediaPipe assets so the app bundles matching JS and WASM files.
 3. Keep automatic active-camera discovery from restarting the stream; only a user-selected camera should trigger a camera switch.
 4. Build and sync the Android app, install it on the connected Galaxy A53, and verify portrait preview, a correctly oriented saved frame, MediaPipe pose guidance, automatic capture, and uninterrupted spoken instructions.
@@ -327,4 +327,4 @@ Run the repository's typecheck, lint, tests, and production build. Then sync/bui
 
 ## Current status
 
-The first Android iteration fixed the MediaPipe JS/WASM mismatch; the device reached AI-control mode, but the user still observed a cropped frame. A manual landscape-to-portrait start sequence then allowed a successful capture, suggesting startup orientation timing remains relevant. The next build adds an explicit orientation-matched aspect ratio and prefers `resizeMode: none`. Typecheck, lint, all 138 tests, production build, and Android debug build pass; this APK is installed on the Galaxy A53 and awaits the user's visual verification. Defer the Kotlin module while this additional web-camera attempt is evaluated.
+The first Android iteration fixed the MediaPipe JS/WASM mismatch; the device reached AI-control mode, but the user still observed a cropped frame. A manual landscape-to-portrait start sequence then allowed a successful capture, suggesting startup orientation timing remains relevant. The second build added a 9:16 portrait aspect-ratio request; the user reported this resulted in a nearly square crop, while starting in landscape avoided it. The next build requests the sensor's native 3:4 portrait/4:3 landscape frame and contains it without cropping. Validate this candidate on the Galaxy A53 before considering CameraX.
