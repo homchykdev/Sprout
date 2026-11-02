@@ -117,6 +117,8 @@ local.properties
 
 ПРИ ОБНОВЛЕНИИ ДЕЛАТЬ npm run build.txt
 ДЛЯ DEV ЗАПУСКА  npm run dev -- --host.txt
+ПРИ ОБНОВЛЕНИИ ДЕЛАТЬ npx cap sync android.txt
+ПРИ ОБНОВЛЕНИИ ДЕЛАТЬ npx cap sync android.txt
 .playwright-mcp/
 
 # Generated MediaPipe WASM (copied from node_modules by scripts/prepare-mediapipe.mjs)
