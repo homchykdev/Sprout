@@ -1,17 +1,79 @@
 /** Camera helpers for guided progress-photo capture. */
 
 export type CameraFacing = "user" | "environment";
+export type CameraLens = "standard" | "wide-angle" | "telephoto";
+
+export interface CameraDevice {
+  deviceId: string;
+  label: string;
+  facing: CameraFacing | "unknown";
+  lens: CameraLens;
+}
+
+function cameraFacing(label: string): CameraDevice["facing"] {
+  const name = label.toLowerCase();
+  if (/front|selfie|user|передн|фронт/i.test(name)) return "user";
+  if (/back|rear|environment|задн|основн/i.test(name)) return "environment";
+  return "unknown";
+}
+
+function cameraLens(label: string): CameraLens {
+  const name = label.toLowerCase();
+  if (/ultra.?wide|wide.?angle|широкоугол|0[.,][56]x/i.test(name)) return "wide-angle";
+  if (/tele|zoom|[35]x/i.test(name)) return "telephoto";
+  return "standard";
+}
+
+export async function getAvailableCameras(): Promise<CameraDevice[]> {
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  return devices
+    .filter((device) => device.kind === "videoinput")
+    .map((device, index) => ({
+      deviceId: device.deviceId,
+      label: device.label || `Камера ${index + 1}`,
+      facing: cameraFacing(device.label),
+      lens: cameraLens(device.label),
+    }));
+}
+
+export function preferredCamera(
+  cameras: CameraDevice[],
+  facing: CameraFacing,
+): CameraDevice | undefined {
+  return cameras
+    .filter((camera) => camera.facing === facing)
+    .sort((a, b) => Number(a.lens !== "standard") - Number(b.lens !== "standard"))[0];
+}
+
+export function cameraResolutionConstraints(isPortrait: boolean): MediaTrackConstraints {
+  return {
+    width: { ideal: isPortrait ? 720 : 1280 },
+    height: { ideal: isPortrait ? 1280 : 720 },
+  };
+}
 
 /** Front camera by default, portrait, continuous autofocus where supported. */
-export function cameraConstraints(facing: CameraFacing = "user"): MediaStreamConstraints {
+export function cameraConstraints(
+  facing: CameraFacing = "user",
+  deviceId?: string,
+  isPortrait = true,
+): MediaStreamConstraints {
   const video: MediaTrackConstraints = {
-    facingMode: { ideal: facing },
-    width: { ideal: 1440 },
-    height: { ideal: 1920 },
-    aspectRatio: { ideal: 3 / 4 },
+    ...(deviceId ? { deviceId: { exact: deviceId } } : { facingMode: { exact: facing } }),
+    ...cameraResolutionConstraints(isPortrait),
     advanced: [{ focusMode: "continuous" } as MediaTrackConstraintSet],
   };
   return { video, audio: false };
+}
+
+export function fallbackCameraConstraints(
+  facing: CameraFacing,
+  isPortrait = true,
+): MediaStreamConstraints {
+  return {
+    video: { facingMode: { ideal: facing }, ...cameraResolutionConstraints(isPortrait) },
+    audio: false,
+  };
 }
 
 export function shouldRotateCameraFeed(
@@ -20,7 +82,8 @@ export function shouldRotateCameraFeed(
   viewportWidth: number,
   viewportHeight: number,
 ): boolean {
-  return videoWidth > videoHeight && viewportHeight > viewportWidth;
+  if (!videoWidth || !videoHeight || !viewportWidth || !viewportHeight) return false;
+  return videoWidth > videoHeight !== viewportWidth > viewportHeight;
 }
 
 export function cameraFrameSize(

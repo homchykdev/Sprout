@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { Capacitor } from "@capacitor/core";
+import { App } from "@capacitor/app";
 import { LocalNotifications } from "@capacitor/local-notifications";
 import { toast } from "sonner";
 import { usePhotoDue } from "@/hooks/usePhotoReminder";
@@ -7,7 +8,7 @@ import { dayKey } from "@/lib/game";
 import { CELEBRATE_PHRASES, buildSlots, pickPhrase, phraseFor, type DayKind } from "@/lib/phrases";
 import { dayInfo, dueToday, planProgress } from "@/lib/plan";
 import { useApp } from "@/lib/store";
-import { notify } from "@/lib/notify";
+import { notify, requestNotificationPermission } from "@/lib/notify";
 import {
   dateFromReminderId,
   isManagedReminderId,
@@ -122,6 +123,14 @@ export function useReminders() {
     if (Capacitor.isNativePlatform()) {
       let active = true;
       const synchronize = async () => {
+        const current = useApp.getState();
+        if (current.reminders.enabled || current.photoReminder.enabled) {
+          const permission = await LocalNotifications.checkPermissions();
+          if (permission.display === "prompt" || permission.display === "prompt-with-rationale")
+            await requestNotificationPermission();
+          else if (permission.display !== "granted")
+            console.warn("Android notifications are blocked; enable them in system settings.");
+        }
         await reconcileDeliveredReminders();
         if (!active) return;
         reminderTick();
@@ -150,6 +159,17 @@ export function useReminders() {
         if (document.visibilityState === "visible") void synchronize();
       };
       document.addEventListener("visibilitychange", onVisible);
+      let appListener: Awaited<ReturnType<typeof App.addListener>> | undefined;
+      void App.addListener("appStateChange", ({ isActive }) => {
+        if (isActive) void synchronize();
+      })
+        .then((listener) => {
+          if (active) appListener = listener;
+          else void listener.remove();
+        })
+        .catch((error: unknown) =>
+          console.error("Could not observe Android app lifecycle.", error),
+        );
       const listener = LocalNotifications.addListener("localNotificationReceived", (notification) =>
         recordDeliveredReminder(notification.id),
       );
@@ -161,6 +181,7 @@ export function useReminders() {
         active = false;
         unsubscribe();
         document.removeEventListener("visibilitychange", onVisible);
+        void appListener?.remove();
         void listener
           .then((handle) => handle.remove())
           .catch((error: unknown) => {

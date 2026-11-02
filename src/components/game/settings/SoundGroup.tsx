@@ -1,5 +1,6 @@
 import { Play } from "lucide-react";
 import { useEffect, useState } from "react";
+import { Capacitor } from "@capacitor/core";
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { TapButton } from "@/components/game/TapButton";
@@ -16,11 +17,20 @@ export function SoundGroup() {
   const changed = sliceChanged(v, entry.voice);
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   useEffect(() => {
-    if (typeof speechSynthesis === "undefined") return;
-    const load = () => setVoices(listVoices());
+    let active = true;
+    const load = () => {
+      void listVoices().then((items) => {
+        if (active) setVoices(items);
+      });
+    };
     load();
-    speechSynthesis.addEventListener("voiceschanged", load);
-    return () => speechSynthesis.removeEventListener("voiceschanged", load);
+    if (!Capacitor.isNativePlatform() && typeof speechSynthesis !== "undefined")
+      speechSynthesis.addEventListener("voiceschanged", load);
+    return () => {
+      active = false;
+      if (!Capacitor.isNativePlatform() && typeof speechSynthesis !== "undefined")
+        speechSynthesis.removeEventListener("voiceschanged", load);
+    };
   }, []);
   const row = "flex items-center justify-between gap-3";
 

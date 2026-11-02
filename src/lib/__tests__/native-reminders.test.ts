@@ -38,7 +38,9 @@ describe("native reminders", () => {
     expect(notifications.some((n) => Math.floor(n.id / 10) === todayCode)).toBe(true);
     expect(notifications.some((n) => Math.floor(n.id / 10) === tomorrowCode)).toBe(true);
     expect(notifications.every((n) => n.schedule?.at && n.schedule.at > now)).toBe(true);
-    expect(notifications.every((n) => n.isExactNotification === false)).toBe(true);
+    expect(notifications.every((n) => n.isExactNotification === true)).toBe(true);
+    expect(notifications.every((n) => n.isExactMandatory === false)).toBe(true);
+    expect(notifications.every((n) => n.channelId === "reminders")).toBe(true);
     expect(notifications.every((n) => n.schedule?.allowWhileIdle)).toBe(true);
   });
 

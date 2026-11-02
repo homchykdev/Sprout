@@ -1,6 +1,7 @@
 /** Pose checks for guided capture + lazy MediaPipe Pose Landmarker loading. */
 
 import type { PoseLandmarker } from "@mediapipe/tasks-vision";
+import { Capacitor } from "@capacitor/core";
 import type { PoseStrain, PoseView } from "./pose";
 
 export interface PosePoint {
@@ -161,12 +162,17 @@ async function createLandmarker(delegate: "GPU" | "CPU"): Promise<PoseLandmarker
 
 /** Loads the pose model once; falls back from GPU to CPU. */
 export function loadPoseLandmarker(): Promise<PoseLandmarker> {
-  landmarkerPromise ??= createLandmarker("GPU")
-    .catch(() => createLandmarker("CPU"))
-    .catch((e: unknown) => {
-      landmarkerPromise = null;
-      throw e;
-    });
+  landmarkerPromise ??= (
+    Capacitor.isNativePlatform()
+      ? createLandmarker("CPU")
+      : createLandmarker("GPU").catch((error: unknown) => {
+          console.warn("MediaPipe GPU delegate failed; retrying with CPU.", error);
+          return createLandmarker("CPU");
+        })
+  ).catch((e: unknown) => {
+    landmarkerPromise = null;
+    throw e;
+  });
   return landmarkerPromise;
 }
 

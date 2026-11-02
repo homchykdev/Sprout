@@ -6,12 +6,18 @@ export async function notify(title: string, body: string) {
   if (Capacitor.isNativePlatform()) {
     const permission = await LocalNotifications.checkPermissions();
     if (permission.display !== "granted") return false;
+    await LocalNotifications.createChannel({
+      id: "reminders",
+      name: "Напоминания",
+      importance: 4,
+    });
     await LocalNotifications.schedule({
       notifications: [
         {
           id: (Date.now() % 999_999) + 1,
           title,
           body,
+          channelId: "reminders",
         },
       ],
     });

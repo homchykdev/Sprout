@@ -1,27 +1,99 @@
+import { Capacitor } from "@capacitor/core";
+import { QueueStrategy, TextToSpeech } from "./native-tts";
 import { useApp } from "./store";
 
 let ctx: AudioContext | null = null;
 const audio = () => (ctx ??= new AudioContext());
 
-export function listVoices() {
+let nativeVoices: ReturnType<typeof TextToSpeech.getSupportedVoices> | undefined;
+let nativeSpeechRequests = 0;
+let nativeSpeechGeneration = 0;
+
+export async function listVoices(): Promise<SpeechSynthesisVoice[]> {
+  if (Capacitor.isNativePlatform()) {
+    try {
+      nativeVoices ??= TextToSpeech.getSupportedVoices();
+      let voices = (await nativeVoices).voices;
+      if (!voices.length) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        nativeVoices = TextToSpeech.getSupportedVoices();
+        voices = (await nativeVoices).voices;
+      }
+      return voices.filter((voice) => voice.lang.toLowerCase().startsWith("ru"));
+    } catch (error) {
+      nativeVoices = undefined;
+      console.error("Could not load native speech voices.", error);
+      return [];
+    }
+  }
   if (typeof speechSynthesis === "undefined") return [];
   return speechSynthesis.getVoices().filter((v) => v.lang.toLowerCase().startsWith("ru"));
 }
 
 export function speak(text: string, opts: { interrupt?: boolean } = {}) {
   const v = useApp.getState().voice;
-  if (!v.enabled || v.muted || typeof speechSynthesis === "undefined") return;
+  if (!v.enabled || v.muted) return;
+  if (Capacitor.isNativePlatform()) {
+    if (opts.interrupt) nativeSpeechGeneration++;
+    const generation = nativeSpeechGeneration;
+    void (async () => {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        if (generation !== nativeSpeechGeneration) return;
+        let started = false;
+        try {
+          let voiceIndex = -1;
+          if (v.voiceURI) {
+            nativeVoices ??= TextToSpeech.getSupportedVoices();
+            const voices = (await nativeVoices).voices;
+            voiceIndex = voices.findIndex((voice) => voice.voiceURI === v.voiceURI);
+          }
+          if (generation !== nativeSpeechGeneration) return;
+          nativeSpeechRequests++;
+          started = true;
+          await TextToSpeech.speak({
+            text,
+            lang: "ru-RU",
+            rate: v.rate,
+            volume: 1,
+            ...(voiceIndex >= 0 ? { voice: voiceIndex } : {}),
+            queueStrategy: opts.interrupt ? QueueStrategy.Flush : QueueStrategy.Add,
+          });
+          return;
+        } catch (error) {
+          nativeVoices = undefined;
+          if (attempt === 0 && String(error).includes("Not yet initialized")) {
+            await new Promise((resolve) => setTimeout(resolve, 500));
+          } else {
+            console.error("Could not speak with the native text-to-speech engine.", error);
+            return;
+          }
+        } finally {
+          if (started) nativeSpeechRequests--;
+        }
+      }
+    })();
+    return;
+  }
+  if (typeof speechSynthesis === "undefined") return;
   if (opts.interrupt) speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
   u.lang = "ru-RU";
   u.rate = v.rate;
-  const voice =
-    speechSynthesis.getVoices().find((x) => x.voiceURI === v.voiceURI) ?? listVoices()[0];
+  const voices = speechSynthesis.getVoices().filter((x) => x.lang.toLowerCase().startsWith("ru"));
+  const voice = speechSynthesis.getVoices().find((x) => x.voiceURI === v.voiceURI) ?? voices[0];
   if (voice) u.voice = voice;
   speechSynthesis.speak(u);
 }
 
 export function stopSpeech() {
+  if (Capacitor.isNativePlatform()) {
+    nativeSpeechGeneration++;
+    if (!nativeSpeechRequests) return;
+    void TextToSpeech.stop().catch((error: unknown) =>
+      console.error("Could not stop native speech.", error),
+    );
+    return;
+  }
   if (typeof speechSynthesis !== "undefined") speechSynthesis.cancel();
 }
 

@@ -1,13 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { App } from "@capacitor/app";
 import { Camera, Eye, EyeOff, SkipForward, SwitchCamera, X } from "lucide-react";
 import {
   captureJpeg,
+  cameraResolutionConstraints,
   drawCameraFrame,
+  getAvailableCameras,
   motionScore,
   sampleGray,
   stopStream,
   cameraConstraints,
+  fallbackCameraConstraints,
+  preferredCamera,
   shouldRotateCameraFeed,
+  type CameraDevice,
   type CameraFacing,
 } from "@/lib/capture";
 import { useBlobUrl, type MediaItem } from "@/lib/media";
@@ -49,6 +55,8 @@ export function CameraStage({ frame, step, total, ghost, onCaptured, onSkip, onE
   const [countdown, setCountdown] = useState<number | null>(null);
   const [facing, setFacing] = useState<CameraFacing>("user");
   const [twoCams, setTwoCams] = useState(false);
+  const [cameras, setCameras] = useState<CameraDevice[]>([]);
+  const [cameraDeviceId, setCameraDeviceId] = useState<string | undefined>();
   const [rotateFeed, setRotateFeed] = useState(false);
   const [previewSize, setPreviewSize] = useState({ width: 0, height: 0 });
   const cdRef = useRef(false);
@@ -110,6 +118,8 @@ export function CameraStage({ frame, step, total, ghost, onCaptured, onSkip, onE
     const video = videoRef.current;
     if (!video) return;
     let cancelled = false;
+    let appPaused = false;
+    let isPortrait = window.innerHeight > window.innerWidth;
     let rotatePortraitFeed = false;
     let stream: MediaStream | null = null;
     let raf = 0;
@@ -158,6 +168,22 @@ export function CameraStage({ frame, step, total, ghost, onCaptured, onSkip, onE
         bounds?.height ?? window.innerHeight,
       );
       setRotateFeed(rotatePortraitFeed);
+    };
+
+    const handleViewportResize = () => {
+      updateOrientation();
+      const nextIsPortrait = window.innerHeight > window.innerWidth;
+      if (nextIsPortrait === isPortrait) return;
+      isPortrait = nextIsPortrait;
+      const track = stream?.getVideoTracks()[0];
+      if (track) {
+        void track
+          .applyConstraints(cameraResolutionConstraints(isPortrait))
+          .then(updateOrientation)
+          .catch((error: unknown) =>
+            console.warn("Could not adapt camera resolution to screen orientation.", error),
+          );
+      }
     };
 
     const loop = (ts: number) => {
@@ -222,49 +248,91 @@ export function CameraStage({ frame, step, total, ghost, onCaptured, onSkip, onE
           landmarker = lm;
           if (!cancelled) setModel("ready");
         })
-        .catch(() => {
+        .catch((error: unknown) => {
+          console.error("MediaPipe could not initialize; using motion fallback.", error);
           if (!cancelled) setModel("fallback");
         })
         .finally(() => {
           modelDone = true;
         });
       try {
-        stream = await navigator.mediaDevices.getUserMedia(cameraConstraints("user"));
-        if (cancelled) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia(
+            cameraConstraints(facing, cameraDeviceId, isPortrait),
+          );
+        } catch (error) {
+          const name = error instanceof DOMException ? error.name : "";
+          if (name !== "OverconstrainedError" && name !== "NotFoundError") throw error;
+          console.warn(
+            "Preferred camera constraints were unavailable; retrying with basic facing.",
+            error,
+          );
+          stream = await navigator.mediaDevices.getUserMedia(
+            fallbackCameraConstraints(facing, isPortrait),
+          );
+        }
+        if (cancelled || appPaused) {
           stopStream(stream);
           return;
         }
         video.addEventListener("loadedmetadata", updateOrientation);
-        window.addEventListener("resize", updateOrientation);
+        window.addEventListener("resize", handleViewportResize);
         video.srcObject = stream;
-        await video.play().catch(() => {});
+        await video.play();
         updateOrientation();
-        // More than one video input → the flip button is worth showing.
-        navigator.mediaDevices
-          .enumerateDevices()
-          .then((ds) => {
-            if (!cancelled) setTwoCams(ds.filter((d) => d.kind === "videoinput").length > 1);
+        void getAvailableCameras()
+          .then((availableCameras) => {
+            if (!cancelled) {
+              setCameras(availableCameras);
+              setTwoCams(availableCameras.length > 1);
+              if (!cameraDeviceId) {
+                const matching = preferredCamera(availableCameras, facing);
+                if (matching?.deviceId) setCameraDeviceId(matching.deviceId);
+              }
+            }
           })
-          .catch(() => {});
+          .catch((error: unknown) => console.warn("Could not enumerate cameras.", error));
         if (!cancelled) raf = requestAnimationFrame(loop);
       } catch (e) {
-        if (!cancelled) setError(cameraError(e));
+        if (!cancelled) {
+          console.error("Could not start camera capture.", e);
+          setError(cameraError(e));
+        }
         return;
       }
       await modelPromise;
     };
     void start();
+    let appListener: Awaited<ReturnType<typeof App.addListener>> | undefined;
+    void App.addListener("appStateChange", ({ isActive }) => {
+      if (!isActive) {
+        appPaused = true;
+        stopStream(stream);
+        stream = null;
+        video.srcObject = null;
+        cancelAnimationFrame(raf);
+      } else if (!cancelled) {
+        appPaused = false;
+        setAttempt((value) => value + 1);
+      }
+    })
+      .then((listener) => {
+        if (cancelled) void listener.remove();
+        else appListener = listener;
+      })
+      .catch((error: unknown) => console.error("Could not observe camera app lifecycle.", error));
 
     return () => {
       cancelled = true;
       cancelAnimationFrame(raf);
       video.removeEventListener("loadedmetadata", updateOrientation);
-      window.removeEventListener("resize", updateOrientation);
+      window.removeEventListener("resize", handleViewportResize);
       stopStream(stream);
+      void appListener?.remove();
       stopSpeech();
       if (video) video.srcObject = null;
     };
-  }, [frame.view, frame.strain, attempt, facing]);
+  }, [frame.view, frame.strain, attempt, facing, cameraDeviceId]);
 
   return (
     <div className="relative flex h-[100dvh] flex-col bg-black text-white">
@@ -373,9 +441,20 @@ export function CameraStage({ frame, step, total, ghost, onCaptured, onSkip, onE
       <div className="flex items-center gap-2 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
         <button
           type="button"
-          aria-label="Переключить камеру (основная / фронтальная)"
+          aria-label={`Переключить камеру${cameras.length > 0 ? `: ${cameras.find((camera) => camera.deviceId === cameraDeviceId)?.label ?? "следующая"}` : " (основная / фронтальная)"}`}
+          title={cameras.find((camera) => camera.deviceId === cameraDeviceId)?.label}
           disabled={!twoCams}
-          onClick={() => setFacing((f) => (f === "user" ? "environment" : "user"))}
+          onClick={() => {
+            if (!cameras.length) {
+              setCameraDeviceId(undefined);
+              setFacing((current) => (current === "user" ? "environment" : "user"));
+              return;
+            }
+            const currentIndex = cameras.findIndex((camera) => camera.deviceId === cameraDeviceId);
+            const next = cameras[(currentIndex + 1 + cameras.length) % cameras.length]!;
+            setCameraDeviceId(next.deviceId);
+            if (next.facing !== "unknown") setFacing(next.facing);
+          }}
           className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 text-white/80 disabled:opacity-30"
         >
           <SwitchCamera className="h-5 w-5" />

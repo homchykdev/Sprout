@@ -19,7 +19,13 @@ type ReminderState = Pick<
 
 const SCHEDULE_DAYS = 30;
 const PHOTO_SLOT = 9;
-let scheduleQueue: Promise<void> = Promise.resolve();
+const CHANNEL_ID = "reminders";
+const SCHEDULE_CONFIG_KEY = "sprout-native-reminders-config";
+const SCHEDULE_CONFIG_VERSION = "1";
+const NATIVE_BATCH_SIZE = 20;
+let latestRequest:
+  { state: ReminderState; lastPhotoDate: string | undefined; now: Date } | undefined;
+let scheduleQueue: Promise<void> | undefined;
 
 function notificationId(date: Date, slot: number): number {
   return Number(dayKey(date).replaceAll("-", "")) * 10 + slot;
@@ -45,8 +51,10 @@ function nativeNotification(
     id: notificationId(date, slot),
     title,
     body,
+    channelId: CHANNEL_ID,
     schedule: { at: date, allowWhileIdle: true },
-    isExactNotification: false,
+    isExactNotification: true,
+    isExactMandatory: false,
   };
 }
 
@@ -127,15 +135,74 @@ export function buildNativeReminders(
 
 async function syncSchedule(state: ReminderState, lastPhotoDate: string | undefined, now: Date) {
   const permission = await LocalNotifications.checkPermissions();
-  const pending = await LocalNotifications.getPending();
-  const managed = pending.notifications
-    .filter(({ id }) => isManagedReminderId(id))
-    .map(({ id }) => ({ id }));
-  if (managed.length) await LocalNotifications.cancel({ notifications: managed });
+  await LocalNotifications.createChannel({
+    id: CHANNEL_ID,
+    name: "Напоминания",
+    importance: 4,
+  });
   if (permission.display !== "granted") return;
 
-  const notifications = buildNativeReminders(state, lastPhotoDate, now);
-  if (notifications.length) await LocalNotifications.schedule({ notifications });
+  const pending = await LocalNotifications.getPending();
+  const existing = new Map(
+    pending.notifications
+      .filter(({ id }) => isManagedReminderId(id))
+      .map((notification) => [notification.id, notification]),
+  );
+  const desired = buildNativeReminders(state, lastPhotoDate, now);
+  let needsMigration = true;
+  try {
+    needsMigration = window.localStorage.getItem(SCHEDULE_CONFIG_KEY) !== SCHEDULE_CONFIG_VERSION;
+  } catch (error) {
+    console.warn("Could not read the native reminder configuration version.", error);
+  }
+  const desiredIds = new Set(desired.map(({ id }) => id));
+  const stale = needsMigration
+    ? [...existing.keys()]
+    : [...existing.keys()].filter((id) => !desiredIds.has(id));
+  const additions: LocalNotificationSchema[] = [];
+  const updates: LocalNotificationSchema[] = [];
+  for (const notification of desired) {
+    if (needsMigration) {
+      additions.push(notification);
+      continue;
+    }
+    const current = existing.get(notification.id);
+    if (!current) {
+      additions.push(notification);
+      continue;
+    }
+    const currentAt =
+      current.schedule?.at instanceof Date
+        ? current.schedule.at.getTime()
+        : new Date(current.schedule?.at ?? 0).getTime();
+    if (
+      current.title !== notification.title ||
+      current.body !== notification.body ||
+      currentAt !== notification.schedule?.at?.getTime()
+    )
+      updates.push(notification);
+  }
+  for (let offset = 0; offset < stale.length; offset += NATIVE_BATCH_SIZE) {
+    const batch = stale.slice(offset, offset + NATIVE_BATCH_SIZE);
+    await LocalNotifications.cancel({ notifications: batch.map((id) => ({ id })) });
+  }
+  let warning: string | undefined;
+  if (updates.length) {
+    const result = await LocalNotifications.update({ notifications: updates });
+    warning = result.warning?.message;
+  }
+  for (let offset = 0; offset < additions.length; offset += NATIVE_BATCH_SIZE) {
+    const batch = additions.slice(offset, offset + NATIVE_BATCH_SIZE);
+    const result = await LocalNotifications.schedule({ notifications: batch });
+    warning ??= result.warning?.message;
+  }
+  if (needsMigration) {
+    try {
+      window.localStorage.setItem(SCHEDULE_CONFIG_KEY, SCHEDULE_CONFIG_VERSION);
+    } catch (error) {
+      console.warn("Could not persist the native reminder configuration version.", error);
+    }
+  }
 }
 
 export function syncNativeReminderSchedule(
@@ -144,11 +211,27 @@ export function syncNativeReminderSchedule(
   now = new Date(),
 ): Promise<void> {
   if (!Capacitor.isNativePlatform()) return Promise.resolve();
-  const run = () => syncSchedule(state, lastPhotoDate, now);
-  const task = scheduleQueue.then(run, run);
-  scheduleQueue = task.then(
-    () => undefined,
-    () => undefined,
-  );
-  return task;
+  latestRequest = { state, lastPhotoDate, now };
+  if (scheduleQueue) return scheduleQueue;
+  let processedRequest: typeof latestRequest;
+  scheduleQueue = (async () => {
+    do {
+      processedRequest = latestRequest;
+      if (processedRequest)
+        await syncSchedule(
+          processedRequest.state,
+          processedRequest.lastPhotoDate,
+          processedRequest.now,
+        );
+    } while (processedRequest !== latestRequest);
+  })().finally(() => {
+    scheduleQueue = undefined;
+    if (latestRequest !== processedRequest && latestRequest)
+      void syncNativeReminderSchedule(
+        latestRequest.state,
+        latestRequest.lastPhotoDate,
+        latestRequest.now,
+      );
+  });
+  return scheduleQueue;
 }
