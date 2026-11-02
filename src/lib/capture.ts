@@ -51,9 +51,9 @@ export function preferredCamera(
 
 export function cameraResolutionConstraints(isPortrait: boolean): CameraTrackConstraints {
   return {
-    width: { ideal: isPortrait ? 960 : 1280 },
-    height: { ideal: isPortrait ? 1280 : 960 },
-    aspectRatio: { ideal: isPortrait ? 3 / 4 : 4 / 3 },
+    width: { ideal: isPortrait ? 720 : 1280 },
+    height: { ideal: isPortrait ? 1280 : 720 },
+    aspectRatio: { ideal: isPortrait ? 9 / 16 : 16 / 9 },
     resizeMode: { ideal: "none" },
   };
 }

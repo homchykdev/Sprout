@@ -17,6 +17,7 @@ import {
 } from "@/lib/capture";
 import { useBlobUrl, type MediaItem } from "@/lib/media";
 import type { PoseSpec } from "@/lib/pose";
+import { createVoiceGuidance, type VoiceGuidance } from "@/lib/voice-guidance";
 import {
   analyzePose,
   detectPose,
@@ -61,18 +62,23 @@ export function CameraStage({ frame, step, total, ghost, onCaptured, onSkip, onE
   const [rotateFeed, setRotateFeed] = useState(false);
   const cdRef = useRef(false);
   const shotRef = useRef(false);
+  const guidanceRef = useRef<VoiceGuidance | null>(null);
   const ghostUrl = useBlobUrl(ghost?.blob);
 
   const shoot = useCallback(async () => {
     if (shotRef.current) return;
     shotRef.current = true;
+    guidanceRef.current?.pause();
+    stopSpeech();
     try {
       const blob = await captureJpeg(videoRef.current!, facing === "user", rotateFeed);
+      guidanceRef.current?.stop();
       onCaptured(blob);
     } catch {
       shotRef.current = false;
       cdRef.current = false;
       setCountdown(null);
+      guidanceRef.current?.resume();
       setError("Не удалось сделать снимок. Попробуй ещё раз.");
     }
   }, [onCaptured, facing, rotateFeed]);
@@ -122,6 +128,8 @@ export function CameraStage({ frame, step, total, ghost, onCaptured, onSkip, onE
     let stillSince = 0;
     let lastMotion = 0;
     let lastMsg = "";
+    const guidance = createVoiceGuidance((prompt) => speak(prompt, { interrupt: true }));
+    guidanceRef.current = guidance;
     setModel("loading");
     setError(null);
     setRotateFeed(false);
@@ -134,11 +142,13 @@ export function CameraStage({ frame, step, total, ghost, onCaptured, onSkip, onE
       lastMsg = msg;
       setStatus(msg);
       setTone(t);
+      guidance.update(msg);
     };
 
     const begin = () => {
       if (cdRef.current || shotRef.current) return;
       cdRef.current = true;
+      guidance.pause();
       setCountdown(3);
       speak("Замри. Три, два, один.", { interrupt: true });
     };
@@ -146,6 +156,7 @@ export function CameraStage({ frame, step, total, ghost, onCaptured, onSkip, onE
       if (!cdRef.current) return;
       cdRef.current = false;
       setCountdown(null);
+      guidance.resume();
     };
 
     const updateOrientation = () => {
@@ -183,8 +194,8 @@ export function CameraStage({ frame, step, total, ghost, onCaptured, onSkip, onE
             if (!points) tracker.reset();
             if (check.ok) {
               if (still >= 1200) {
-                say("Отлично! Не двигайся…", "ok");
                 begin();
+                say("Отлично! Не двигайся…", "ok");
               } else {
                 say("Стой неподвижно…", "warn");
                 cancel();
@@ -210,8 +221,8 @@ export function CameraStage({ frame, step, total, ghost, onCaptured, onSkip, onE
                 say("Встань в контур и замри", "warn");
                 stillSince = ts;
               } else if (lastMotion && ts - stillSince >= 1200 && ts - lastMotion < 15000) {
-                say("Стой неподвижно…", "ok");
                 begin();
+                say("Стой неподвижно…", "ok");
               }
             }
             prevGray = pixels;
@@ -296,6 +307,7 @@ export function CameraStage({ frame, step, total, ghost, onCaptured, onSkip, onE
     void App.addListener("appStateChange", ({ isActive }) => {
       if (!isActive) {
         appPaused = true;
+        guidance.pause();
         stopSpeech();
         stopStream(stream);
         stream = null;
@@ -323,6 +335,9 @@ export function CameraStage({ frame, step, total, ghost, onCaptured, onSkip, onE
       resizeObserver?.disconnect();
       stopStream(stream);
       void appListener?.remove();
+      guidance.stop();
+      if (guidanceRef.current === guidance) guidanceRef.current = null;
+      stopSpeech();
       if (video) video.srcObject = null;
     };
   }, [frame.view, frame.strain, attempt, facing, cameraDeviceId]);

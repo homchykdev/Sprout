@@ -302,7 +302,7 @@ Make portrait camera preview and saved photos upright and visible, restore Media
 
 ## Steps
 
-1. Use explicit canvas transforms for upright rotation and front-camera mirroring. Request the sensor's native 3:4 aspect ratio in portrait and 4:3 in landscape, preferring uncropped camera output. Recalculate when the preview or video dimensions change, and avoid reconfiguring the camera track during screen rotation; add regression tests for constraints, transform matrices, and captured-frame sizing.
+1. Use explicit canvas transforms for upright rotation and front-camera mirroring. Revert the unsuccessful sensor-native 3:4 / 4:3 constraints to the prior 9:16 / 16:9 settings. Recalculate when the preview or video dimensions change, and avoid reconfiguring the camera track during screen rotation; add regression tests for constraints, transform matrices, and captured-frame sizing.
 2. Compare WASM asset contents, not only file sizes, when preparing MediaPipe assets so the app bundles matching JS and WASM files.
 3. Keep automatic active-camera discovery from restarting the stream; only a user-selected camera should trigger a camera switch.
 4. Build and sync the Android app, install it on the connected Galaxy A53, and verify portrait preview, a correctly oriented saved frame, MediaPipe pose guidance, automatic capture, and uninterrupted spoken instructions.
@@ -327,4 +327,38 @@ Run the repository's typecheck, lint, tests, and production build. Then sync/bui
 
 ## Current status
 
-The first Android iteration fixed the MediaPipe JS/WASM mismatch; the device reached AI-control mode, but the user still observed a cropped frame. A manual landscape-to-portrait start sequence then allowed a successful capture, suggesting startup orientation timing remains relevant. The second build added a 9:16 portrait aspect-ratio request; the user reported this resulted in a nearly square crop, while starting in landscape avoided it. The next build requests the sensor's native 3:4 portrait/4:3 landscape frame and contains it without cropping. Validate this candidate on the Galaxy A53 before considering CameraX.
+The first Android iteration fixed the MediaPipe JS/WASM mismatch; the device reached AI-control mode, but the user still observed a cropped frame. Starting in landscape and rotating back to portrait has allowed a successful capture, suggesting startup orientation timing remains relevant. A 9:16 portrait build retained a square crop, and the sensor-native 3:4 / 4:3 build was reported worse. Revert to the previously installed 9:16 / 16:9 request and validate the next camera candidate on the Galaxy A53 before considering CameraX.
+
+---
+
+# Camera framing and persistent voice guidance
+
+## Goal
+
+Undo the latest 3:4 camera constraint that worsened framing, and keep spoken pose guidance active from camera readiness through the automatic or manual photo capture.
+
+## Steps
+
+1. Return to the previously installed 9:16 portrait / 16:9 landscape ideal constraints and retain the existing orientation normalization. Do not claim framing is fixed until the user verifies the installed build.
+2. Speak the latest actionable camera status when it changes and repeat it every 6 seconds while the camera is ready and the shutter countdown is not active. The countdown announcement takes priority; stop guidance when a photo is captured, the camera exits, or the app backgrounds.
+3. Add focused tests for the guidance repeat/pause/stop behavior and retain camera constraint tests.
+4. Run typecheck, lint, tests, production build, sync/build/install the Android app, and ask the user to verify portrait framing and uninterrupted guidance on the Galaxy A53.
+
+## Files
+
+- `src/lib/capture.ts`
+- `src/lib/__tests__/capture.test.ts`
+- `src/components/game/CameraStage.tsx`
+- `src/lib/voice-guidance.ts` (only if needed to isolate and test repeat timing)
+- `src/lib/__tests__/voice-guidance.test.ts` (only if the helper is added)
+- `docs/plan.md`
+
+## Risks
+
+- Returning to 9:16 restores the less-bad previous behavior but does not guarantee portrait framing is fixed; device-specific camera selection/cropping may still require CameraX.
+- Repeating rapidly changing hints can interrupt speech. Repeat only the latest status, throttle status changes if necessary, suspend repetition during the countdown, and stop on capture/background/unmount.
+- The phone's visual result must be verified by the user; do not infer framing from a successful build or orientation metadata alone.
+
+## Current status
+
+The unsuccessful 3:4 / 4:3 camera request has been reverted. The latest Android build adds repeated, latest-only spoken status guidance with countdown pause and capture/background/unmount cleanup. Focused tests and all 140 tests pass; typecheck, lint, production build, and Android debug build pass. The build is installed on the Galaxy A53; portrait framing and real-device voice timing still need user verification.

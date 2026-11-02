@@ -25,9 +25,9 @@ describe("capture", () => {
   it("requests a camera resolution that matches the current screen orientation", () => {
     const c = cameraConstraints("user").video as MediaTrackConstraints;
     expect(c.facingMode).toEqual({ exact: "user" });
-    expect(c.width).toEqual({ ideal: 960 });
+    expect(c.width).toEqual({ ideal: 720 });
     expect(c.height).toEqual({ ideal: 1280 });
-    expect(c.aspectRatio).toEqual({ ideal: 3 / 4 });
+    expect(c.aspectRatio).toEqual({ ideal: 9 / 16 });
     expect(c.advanced?.[0]).toMatchObject({ focusMode: "continuous" });
     expect(cameraResolutionConstraints(true).resizeMode).toEqual({ ideal: "none" });
     expect(cameraConstraints("environment").video).toMatchObject({
@@ -38,8 +38,8 @@ describe("capture", () => {
     });
     expect(cameraConstraints("user", undefined, false).video).toMatchObject({
       width: { ideal: 1280 },
-      height: { ideal: 960 },
-      aspectRatio: { ideal: 4 / 3 },
+      height: { ideal: 720 },
+      aspectRatio: { ideal: 16 / 9 },
     });
   });
 
