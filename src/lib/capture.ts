@@ -108,6 +108,8 @@ export function drawCameraFrame(
   const size = cameraFrameSize(width, height, rotate);
   if (canvas.width !== size.width) canvas.width = size.width;
   if (canvas.height !== size.height) canvas.height = size.height;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
   if (rotate && mirror) {
     ctx.transform(0, 1, 1, 0, 0, 0);
   } else if (rotate) {

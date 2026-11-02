@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   cameraConstraints,
   cameraFrameSize,
+  drawCameraFrame,
   getAvailableCameras,
   motionScore,
   preferredCamera,
@@ -96,6 +97,32 @@ describe("capture", () => {
     expect(shouldRotateCameraFeed(0, 1920, 844, 390)).toBe(false);
     expect(cameraFrameSize(1920, 1440, true)).toEqual({ width: 1440, height: 1920 });
     expect(cameraFrameSize(1440, 1920, false)).toEqual({ width: 1440, height: 1920 });
+  });
+
+  it("resets the canvas transform before drawing every camera frame", () => {
+    const context = {
+      setTransform: vi.fn(),
+      clearRect: vi.fn(),
+      translate: vi.fn(),
+      rotate: vi.fn(),
+      transform: vi.fn(),
+      scale: vi.fn(),
+      drawImage: vi.fn(),
+    } as unknown as CanvasRenderingContext2D;
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => context),
+    } as unknown as HTMLCanvasElement;
+    const video = { videoWidth: 1280, videoHeight: 720 } as HTMLVideoElement;
+
+    expect(drawCameraFrame(video, canvas, true)).toBe(true);
+    expect(drawCameraFrame(video, canvas, true)).toBe(true);
+    expect(canvas.width).toBe(720);
+    expect(canvas.height).toBe(1280);
+    expect(context.setTransform).toHaveBeenCalledTimes(2);
+    expect(context.clearRect).toHaveBeenCalledTimes(2);
+    expect(context.rotate).toHaveBeenCalledTimes(2);
   });
 
   it("scores identical frames as zero motion and changes as movement", () => {

@@ -46,6 +46,7 @@ interface Props {
 export function CameraStage({ frame, step, total, ghost, onCaptured, onSkip, onExit }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
+  const previewCanvasRef = useRef<HTMLCanvasElement>(null);
   const [model, setModel] = useState<Model>("loading");
   const [status, setStatus] = useState("Включаю камеру…");
   const [tone, setTone] = useState<Tone>("info");
@@ -58,7 +59,6 @@ export function CameraStage({ frame, step, total, ghost, onCaptured, onSkip, onE
   const [cameras, setCameras] = useState<CameraDevice[]>([]);
   const [cameraDeviceId, setCameraDeviceId] = useState<string | undefined>();
   const [rotateFeed, setRotateFeed] = useState(false);
-  const [previewSize, setPreviewSize] = useState({ width: 0, height: 0 });
   const cdRef = useRef(false);
   const shotRef = useRef(false);
   const ghostUrl = useBlobUrl(ghost?.blob);
@@ -76,18 +76,6 @@ export function CameraStage({ frame, step, total, ghost, onCaptured, onSkip, onE
       setError("Не удалось сделать снимок. Попробуй ещё раз.");
     }
   }, [onCaptured, facing, rotateFeed]);
-
-  useEffect(() => {
-    const preview = previewRef.current;
-    if (!preview) return;
-    const updateSize = () => {
-      setPreviewSize({ width: preview.clientWidth, height: preview.clientHeight });
-    };
-    updateSize();
-    const observer = new ResizeObserver(updateSize);
-    observer.observe(preview);
-    return () => observer.disconnect();
-  }, []);
 
   useEffect(() => {
     speak(frame.instruction.join(" "), { interrupt: true });
@@ -128,8 +116,9 @@ export function CameraStage({ frame, step, total, ghost, onCaptured, onSkip, onE
     const tracker = new StabilityTracker();
     const gray = document.createElement("canvas");
     let prevGray: Uint8ClampedArray | null = null;
-    const upright = document.createElement("canvas");
+    const upright = previewCanvasRef.current ?? document.createElement("canvas");
     let lastDetect = 0;
+    let lastDrawnTime = -1;
     let stillSince = 0;
     let lastMotion = 0;
     let lastMsg = "";
@@ -161,12 +150,14 @@ export function CameraStage({ frame, step, total, ghost, onCaptured, onSkip, onE
 
     const updateOrientation = () => {
       const bounds = previewRef.current?.getBoundingClientRect();
-      rotatePortraitFeed = shouldRotateCameraFeed(
+      const nextRotation = shouldRotateCameraFeed(
         video.videoWidth,
         video.videoHeight,
         bounds?.width ?? window.innerWidth,
         bounds?.height ?? window.innerHeight,
       );
+      if (nextRotation !== rotatePortraitFeed) lastDrawnTime = -1;
+      rotatePortraitFeed = nextRotation;
       setRotateFeed(rotatePortraitFeed);
     };
 
@@ -189,8 +180,11 @@ export function CameraStage({ frame, step, total, ghost, onCaptured, onSkip, onE
     const loop = (ts: number) => {
       if (cancelled) return;
       if (video.readyState >= 2) {
-        const source =
-          rotatePortraitFeed && drawCameraFrame(video, upright, true) ? upright : video;
+        if (video.currentTime !== lastDrawnTime) {
+          drawCameraFrame(video, upright, rotatePortraitFeed);
+          lastDrawnTime = video.currentTime;
+        }
+        const source = upright.width && upright.height ? upright : video;
         if (landmarker) {
           if (ts - lastDetect >= 120) {
             lastDetect = ts;
@@ -285,10 +279,14 @@ export function CameraStage({ frame, step, total, ghost, onCaptured, onSkip, onE
             if (!cancelled) {
               setCameras(availableCameras);
               setTwoCams(availableCameras.length > 1);
-              if (!cameraDeviceId) {
-                const matching = preferredCamera(availableCameras, facing);
-                if (matching?.deviceId) setCameraDeviceId(matching.deviceId);
-              }
+              const activeId = stream?.getVideoTracks()[0]?.getSettings().deviceId;
+              const selected =
+                availableCameras.find((camera) => camera.deviceId === activeId) ??
+                preferredCamera(availableCameras, facing);
+              if (selected?.deviceId && selected.deviceId !== cameraDeviceId)
+                setCameraDeviceId(selected.deviceId);
+              if (selected && selected.facing !== "unknown" && selected.facing !== facing)
+                setFacing(selected.facing);
             }
           })
           .catch((error: unknown) => console.warn("Could not enumerate cameras.", error));
@@ -337,26 +335,13 @@ export function CameraStage({ frame, step, total, ghost, onCaptured, onSkip, onE
   return (
     <div className="relative flex h-[100dvh] flex-col bg-black text-white">
       <div ref={previewRef} className="relative min-h-0 flex-1 overflow-hidden">
-        <video
-          ref={videoRef}
-          autoPlay
-          playsInline
-          muted
-          style={
-            rotateFeed && previewSize.width && previewSize.height
-              ? {
-                  width: previewSize.height,
-                  height: previewSize.width,
-                  transform: `translate(-50%, -50%) ${facing === "user" ? "scaleX(-1) " : ""}rotate(90deg)`,
-                }
-              : undefined
-          }
+        <video ref={videoRef} autoPlay playsInline muted className="hidden" />
+        <canvas
+          ref={previewCanvasRef}
+          aria-hidden="true"
           className={cn(
-            "object-contain",
-            rotateFeed && previewSize.width && previewSize.height
-              ? "absolute left-1/2 top-1/2 max-h-none max-w-none"
-              : "absolute inset-0 h-full w-full",
-            facing === "user" && !rotateFeed && "scale-x-[-1]",
+            "absolute inset-0 h-full w-full object-contain",
+            facing === "user" && "scale-x-[-1]",
           )}
         />
         {ghostUrl && ghostOn && (
