@@ -10,6 +10,10 @@ export interface CameraDevice {
   lens: CameraLens;
 }
 
+type CameraTrackConstraints = MediaTrackConstraints & {
+  resizeMode?: ConstrainDOMString;
+};
+
 function cameraFacing(label: string): CameraDevice["facing"] {
   const name = label.toLowerCase();
   if (/front|selfie|user|передн|фронт/i.test(name)) return "user";
@@ -45,10 +49,12 @@ export function preferredCamera(
     .sort((a, b) => Number(a.lens !== "standard") - Number(b.lens !== "standard"))[0];
 }
 
-export function cameraResolutionConstraints(isPortrait: boolean): MediaTrackConstraints {
+export function cameraResolutionConstraints(isPortrait: boolean): CameraTrackConstraints {
   return {
     width: { ideal: isPortrait ? 720 : 1280 },
     height: { ideal: isPortrait ? 1280 : 720 },
+    aspectRatio: { ideal: isPortrait ? 9 / 16 : 16 / 9 },
+    resizeMode: { ideal: "none" },
   };
 }
 
@@ -110,22 +116,10 @@ export function drawCameraFrame(
   if (canvas.height !== size.height) canvas.height = size.height;
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  if (rotate && mirror) {
-    // 90° CW + horizontal flip: rotate then draw at negative x with flipped scale
-    ctx.rotate(Math.PI / 2);
-    ctx.scale(-1, 1);
-    ctx.drawImage(video, -width, 0, width, height);
-  } else if (rotate) {
-    // 90° CW: rotate then draw at negative x so video fits in swapped canvas
-    ctx.rotate(Math.PI / 2);
-    ctx.drawImage(video, -width, 0, width, height);
-  } else if (mirror) {
-    ctx.translate(width, 0);
-    ctx.scale(-1, 1);
-    ctx.drawImage(video, 0, 0, width, height);
-  } else {
-    ctx.drawImage(video, 0, 0, width, height);
-  }
+  if (rotate && mirror) ctx.setTransform(0, 1, 1, 0, 0, 0);
+  else if (rotate) ctx.setTransform(0, 1, -1, 0, height, 0);
+  else if (mirror) ctx.setTransform(-1, 0, 0, 1, width, 0);
+  ctx.drawImage(video, 0, 0, width, height);
   return true;
 }
 

@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, statSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -12,7 +12,7 @@ for (const file of files) {
   const from = join(src, file);
   if (!existsSync(from)) continue;
   const to = join(dest, file);
-  if (existsSync(to) && statSync(to).size === statSync(from).size) continue;
+  if (existsSync(to) && readFileSync(to).equals(readFileSync(from))) continue;
   copyFileSync(from, to);
   console.log(`[mediapipe] ${file}`);
 }

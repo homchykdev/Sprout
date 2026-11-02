@@ -285,3 +285,46 @@ Make scheduled workout/photo reminders arrive while the Android app is backgroun
 ## Outcome
 
 Implemented and verified with automated tests, TypeScript, lint, production build, Capacitor sync, and Android debug build. Physical Galaxy A53 verification remains outstanding.
+
+---
+
+# Follow-up: Galaxy A53 camera and pose reliability
+
+## Goal
+
+Make portrait camera preview and saved photos upright and visible, restore MediaPipe pose detection in the installed Android app, and prevent camera initialization from cutting off the spoken setup instructions.
+
+## Findings
+
+- On the connected Galaxy A53, the camera track reports 1280×720 in portrait. The preview canvas is 720×1280, but its sampled pixels are all zero: the current 90-degree canvas transform draws the frame outside the canvas.
+- MediaPipe falls back to manual mode because the installed WASM JavaScript throws during initialization. The copied JS and package JS have the same size but different contents; `prepare-mediapipe.mjs` currently skips copying based only on file size.
+- Camera enumeration can set `cameraDeviceId` after the initial stream starts. Since that state restarts the camera effect, its cleanup can stop the initial voice prompt and unnecessarily reopen the camera.
+
+## Steps
+
+1. Use explicit canvas transforms for upright rotation and front-camera mirroring. Request the orientation-matched aspect ratio while preferring the camera's uncropped mode. Recalculate when the preview or video dimensions change, and avoid reconfiguring the camera track during screen rotation; add regression tests for constraints, transform matrices, and captured-frame sizing.
+2. Compare WASM asset contents, not only file sizes, when preparing MediaPipe assets so the app bundles matching JS and WASM files.
+3. Keep automatic active-camera discovery from restarting the stream; only a user-selected camera should trigger a camera switch.
+4. Build and sync the Android app, install it on the connected Galaxy A53, and verify portrait preview, a correctly oriented saved frame, MediaPipe pose guidance, automatic capture, and uninterrupted spoken instructions.
+
+## Files
+
+- `src/lib/capture.ts`
+- `src/lib/__tests__/capture.test.ts`
+- `scripts/prepare-mediapipe.mjs`
+- `src/components/game/CameraStage.tsx`
+- `docs/plan.md`
+
+## Risks
+
+- Incorrect mirror/rotation transform order could fix the rear camera while reversing the front-camera preview or capture; verify both matrices with unit tests.
+- MediaPipe still depends on the Android WebView's WASM support and available memory; confirm the actual runtime reaches pose-ready state on the device.
+- Android build/sync can update generated assets. Preserve unrelated existing worktree changes and verify only task-related files are altered.
+
+## Verification
+
+Run the repository's typecheck, lint, tests, and production build. Then sync/build/install the Android debug app and inspect the real-device WebView state and logs while testing the capture flow in portrait.
+
+## Current status
+
+The first Android iteration fixed the MediaPipe JS/WASM mismatch; the device reached AI-control mode, but the user still observed a cropped frame. A manual landscape-to-portrait start sequence then allowed a successful capture, suggesting startup orientation timing remains relevant. The next build adds an explicit orientation-matched aspect ratio and prefers `resizeMode: none`. Typecheck, lint, all 138 tests, production build, and Android debug build pass; this APK is installed on the Galaxy A53 and awaits the user's visual verification. Defer the Kotlin module while this additional web-camera attempt is evaluated.

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   cameraConstraints,
   cameraFrameSize,
+  cameraResolutionConstraints,
   drawCameraFrame,
   getAvailableCameras,
   motionScore,
@@ -26,7 +27,9 @@ describe("capture", () => {
     expect(c.facingMode).toEqual({ exact: "user" });
     expect(c.width).toEqual({ ideal: 720 });
     expect(c.height).toEqual({ ideal: 1280 });
+    expect(c.aspectRatio).toEqual({ ideal: 9 / 16 });
     expect(c.advanced?.[0]).toMatchObject({ focusMode: "continuous" });
+    expect(cameraResolutionConstraints(true).resizeMode).toEqual({ ideal: "none" });
     expect(cameraConstraints("environment").video).toMatchObject({
       facingMode: { exact: "environment" },
     });
@@ -36,6 +39,7 @@ describe("capture", () => {
     expect(cameraConstraints("user", undefined, false).video).toMatchObject({
       width: { ideal: 1280 },
       height: { ideal: 720 },
+      aspectRatio: { ideal: 16 / 9 },
     });
   });
 
@@ -103,10 +107,6 @@ describe("capture", () => {
     const context = {
       setTransform: vi.fn(),
       clearRect: vi.fn(),
-      translate: vi.fn(),
-      rotate: vi.fn(),
-      transform: vi.fn(),
-      scale: vi.fn(),
       drawImage: vi.fn(),
     } as unknown as CanvasRenderingContext2D;
     const canvas = {
@@ -120,9 +120,34 @@ describe("capture", () => {
     expect(drawCameraFrame(video, canvas, true)).toBe(true);
     expect(canvas.width).toBe(720);
     expect(canvas.height).toBe(1280);
-    expect(context.setTransform).toHaveBeenCalledTimes(2);
+    expect(context.setTransform).toHaveBeenCalledTimes(4);
+    expect(context.setTransform).toHaveBeenNthCalledWith(1, 1, 0, 0, 1, 0, 0);
+    expect(context.setTransform).toHaveBeenNthCalledWith(2, 0, 1, -1, 0, 720, 0);
     expect(context.clearRect).toHaveBeenCalledTimes(2);
-    expect(context.rotate).toHaveBeenCalledTimes(2);
+    expect(context.drawImage).toHaveBeenNthCalledWith(1, video, 0, 0, 1280, 720);
+  });
+
+  it("keeps rotated selfie frames upright and mirrors them within the portrait canvas", () => {
+    const context = {
+      setTransform: vi.fn(),
+      clearRect: vi.fn(),
+      drawImage: vi.fn(),
+    } as unknown as CanvasRenderingContext2D;
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => context),
+    } as unknown as HTMLCanvasElement;
+    const video = { videoWidth: 1280, videoHeight: 720 } as HTMLVideoElement;
+
+    expect(drawCameraFrame(video, canvas, true, true)).toBe(true);
+    expect(context.setTransform).toHaveBeenLastCalledWith(0, 1, 1, 0, 0, 0);
+    expect(context.drawImage).toHaveBeenLastCalledWith(video, 0, 0, 1280, 720);
+    expect(canvas.width).toBe(720);
+    expect(canvas.height).toBe(1280);
+
+    expect(drawCameraFrame(video, canvas, false, true)).toBe(true);
+    expect(context.setTransform).toHaveBeenLastCalledWith(-1, 0, 0, 1, 1280, 0);
   });
 
   it("scores identical frames as zero motion and changes as movement", () => {

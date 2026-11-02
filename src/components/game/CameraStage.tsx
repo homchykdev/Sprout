@@ -3,7 +3,6 @@ import { App } from "@capacitor/app";
 import { Camera, Eye, EyeOff, SkipForward, SwitchCamera, X } from "lucide-react";
 import {
   captureJpeg,
-  cameraResolutionConstraints,
   drawCameraFrame,
   getAvailableCameras,
   motionScore,
@@ -58,6 +57,7 @@ export function CameraStage({ frame, step, total, ghost, onCaptured, onSkip, onE
   const [twoCams, setTwoCams] = useState(false);
   const [cameras, setCameras] = useState<CameraDevice[]>([]);
   const [cameraDeviceId, setCameraDeviceId] = useState<string | undefined>();
+  const [activeCameraDeviceId, setActiveCameraDeviceId] = useState<string | undefined>();
   const [rotateFeed, setRotateFeed] = useState(false);
   const cdRef = useRef(false);
   const shotRef = useRef(false);
@@ -107,7 +107,7 @@ export function CameraStage({ frame, step, total, ghost, onCaptured, onSkip, onE
     if (!video) return;
     let cancelled = false;
     let appPaused = false;
-    let isPortrait = window.innerHeight > window.innerWidth;
+    const isPortrait = window.innerHeight > window.innerWidth;
     let rotatePortraitFeed = false;
     let stream: MediaStream | null = null;
     let raf = 0;
@@ -161,21 +161,10 @@ export function CameraStage({ frame, step, total, ghost, onCaptured, onSkip, onE
       setRotateFeed(rotatePortraitFeed);
     };
 
-    const handleViewportResize = () => {
-      updateOrientation();
-      const nextIsPortrait = window.innerHeight > window.innerWidth;
-      if (nextIsPortrait === isPortrait) return;
-      isPortrait = nextIsPortrait;
-      const track = stream?.getVideoTracks()[0];
-      if (track) {
-        void track
-          .applyConstraints(cameraResolutionConstraints(isPortrait))
-          .then(updateOrientation)
-          .catch((error: unknown) =>
-            console.warn("Could not adapt camera resolution to screen orientation.", error),
-          );
-      }
-    };
+    const orientation = screen.orientation;
+    const resizeObserver =
+      typeof ResizeObserver === "undefined" ? null : new ResizeObserver(updateOrientation);
+    if (previewRef.current) resizeObserver?.observe(previewRef.current);
 
     const loop = (ts: number) => {
       if (cancelled) return;
@@ -270,21 +259,23 @@ export function CameraStage({ frame, step, total, ghost, onCaptured, onSkip, onE
           return;
         }
         video.addEventListener("loadedmetadata", updateOrientation);
-        window.addEventListener("resize", handleViewportResize);
+        video.addEventListener("resize", updateOrientation);
+        window.addEventListener("resize", updateOrientation);
+        window.addEventListener("orientationchange", updateOrientation);
+        orientation.addEventListener("change", updateOrientation);
         video.srcObject = stream;
         await video.play();
         updateOrientation();
+        const activeId = stream?.getVideoTracks()[0]?.getSettings().deviceId;
+        if (activeId) setActiveCameraDeviceId(activeId);
         void getAvailableCameras()
           .then((availableCameras) => {
             if (!cancelled) {
               setCameras(availableCameras);
               setTwoCams(availableCameras.length > 1);
-              const activeId = stream?.getVideoTracks()[0]?.getSettings().deviceId;
               const selected =
                 availableCameras.find((camera) => camera.deviceId === activeId) ??
                 preferredCamera(availableCameras, facing);
-              if (selected?.deviceId && selected.deviceId !== cameraDeviceId)
-                setCameraDeviceId(selected.deviceId);
               if (selected && selected.facing !== "unknown" && selected.facing !== facing)
                 setFacing(selected.facing);
             }
@@ -305,6 +296,7 @@ export function CameraStage({ frame, step, total, ghost, onCaptured, onSkip, onE
     void App.addListener("appStateChange", ({ isActive }) => {
       if (!isActive) {
         appPaused = true;
+        stopSpeech();
         stopStream(stream);
         stream = null;
         video.srcObject = null;
@@ -324,10 +316,13 @@ export function CameraStage({ frame, step, total, ghost, onCaptured, onSkip, onE
       cancelled = true;
       cancelAnimationFrame(raf);
       video.removeEventListener("loadedmetadata", updateOrientation);
-      window.removeEventListener("resize", handleViewportResize);
+      video.removeEventListener("resize", updateOrientation);
+      window.removeEventListener("resize", updateOrientation);
+      window.removeEventListener("orientationchange", updateOrientation);
+      orientation.removeEventListener("change", updateOrientation);
+      resizeObserver?.disconnect();
       stopStream(stream);
       void appListener?.remove();
-      stopSpeech();
       if (video) video.srcObject = null;
     };
   }, [frame.view, frame.strain, attempt, facing, cameraDeviceId]);
@@ -426,8 +421,8 @@ export function CameraStage({ frame, step, total, ghost, onCaptured, onSkip, onE
       <div className="flex items-center gap-2 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
         <button
           type="button"
-          aria-label={`Переключить камеру${cameras.length > 0 ? `: ${cameras.find((camera) => camera.deviceId === cameraDeviceId)?.label ?? "следующая"}` : " (основная / фронтальная)"}`}
-          title={cameras.find((camera) => camera.deviceId === cameraDeviceId)?.label}
+          aria-label={`Переключить камеру${cameras.length > 0 ? `: ${cameras.find((camera) => camera.deviceId === activeCameraDeviceId)?.label ?? "следующая"}` : " (основная / фронтальная)"}`}
+          title={cameras.find((camera) => camera.deviceId === activeCameraDeviceId)?.label}
           disabled={!twoCams}
           onClick={() => {
             if (!cameras.length) {
@@ -435,7 +430,9 @@ export function CameraStage({ frame, step, total, ghost, onCaptured, onSkip, onE
               setFacing((current) => (current === "user" ? "environment" : "user"));
               return;
             }
-            const currentIndex = cameras.findIndex((camera) => camera.deviceId === cameraDeviceId);
+            const currentIndex = cameras.findIndex(
+              (camera) => camera.deviceId === activeCameraDeviceId,
+            );
             const next = cameras[(currentIndex + 1 + cameras.length) % cameras.length]!;
             setCameraDeviceId(next.deviceId);
             if (next.facing !== "unknown") setFacing(next.facing);
