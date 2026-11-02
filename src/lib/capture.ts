@@ -111,15 +111,21 @@ export function drawCameraFrame(
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   if (rotate && mirror) {
-    ctx.transform(0, 1, 1, 0, 0, 0);
-  } else if (rotate) {
-    ctx.translate(height, 0);
+    // 90° CW + horizontal flip: rotate then draw at negative x with flipped scale
     ctx.rotate(Math.PI / 2);
+    ctx.scale(-1, 1);
+    ctx.drawImage(video, -width, 0, width, height);
+  } else if (rotate) {
+    // 90° CW: rotate then draw at negative x so video fits in swapped canvas
+    ctx.rotate(Math.PI / 2);
+    ctx.drawImage(video, -width, 0, width, height);
   } else if (mirror) {
     ctx.translate(width, 0);
     ctx.scale(-1, 1);
+    ctx.drawImage(video, 0, 0, width, height);
+  } else {
+    ctx.drawImage(video, 0, 0, width, height);
   }
-  ctx.drawImage(video, 0, 0, width, height);
   return true;
 }
 
