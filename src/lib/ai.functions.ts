@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { FunctionCallingConfigMode, GoogleGenAI, Type } from "@google/genai";
 import { z } from "zod";
+import { normalizeAiContent } from "./ai-content";
 import { MUSCLES } from "./types";
 
 const Providers = z.enum(["gemini", "openai"]);
@@ -76,12 +77,12 @@ async function callOnce(
   const text = await res.text();
   if (!res.ok) throw Object.assign(mapHttpError(res.status, text), { status: res.status });
   const j = JSON.parse(text);
-  const out: string =
+  const out =
     provider === "gemini"
       ? (j.candidates?.[0]?.content?.parts ?? [])
-          .map((p: { text?: string }) => p.text ?? "")
+          .map((p: { text?: unknown }) => normalizeAiContent(p?.text))
           .join("")
-      : (j.choices?.[0]?.message?.content ?? "");
+      : normalizeAiContent(j.choices?.[0]?.message?.content);
   if (!out) throw new Error("ИИ не вернул ответ.");
   return out;
 }

@@ -92,7 +92,9 @@ async function ask(system: string, prompt: string) {
     // Prefer the key that still has quota next time.
     useApp.getState().set({ ai: { ...ai, keys: promoteKey(ai.keys, keyIndex) } });
   }
-  const clean = text
+  const raw = typeof text === "string" ? text : "";
+  if (!raw) throw new Error("ИИ вернул ответ в неожиданном формате. Попробуйте ещё раз.");
+  const clean = raw
     .replace(/^```(json)?/m, "")
     .replace(/```\s*$/m, "")
     .trim();
