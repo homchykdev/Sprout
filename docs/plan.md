@@ -1,364 +1,202 @@
-# Plan: Game economy rework — coins, shop, 4-tier streak protection, progression, illustrated medals
-
-## Goal
-Turn workouts into a game loop that pulls the user back daily (Duolingo-style):
-a spendable **coin** currency, a **shop**, a reworked **streak protection ladder**
-(with sick leave), **variable rewards** (chests), **collectible illustrated medals**
-with the mascot "Огонёк", plus **progressive overload** built into plan creation.
-No new dependencies. No backend — everything stays on-device.
-
-## Research basis (Duolingo & others, 2025–2026)
-- **Streak + loss aversion** is the #1 retention driver; freezes/repairs keep the
-  habit positive (streak freeze cut churn ~21% for at-risk users).
-- **Two currencies** (XP for progress + gems for the shop) create two motivation
-  loops; the shop gives coins real value (freezes, boosts, repairs, chests).
-- **Daily quests** (+25% DAU when introduced), **monthly challenge with an exclusive
-  illustrated badge** that disappears when the month ends — "I must get THIS one".
-- **Variable rewards** (treasure chests after lessons, +15% lesson completion),
-  XP boosts for burst motivation, streak repair as a safety net, cosmetics to
-  drain excess currency long-term.
-- Fitness parallels: Strava challenges, Apple Fitness awards — scarcity + art.
-
-## User decisions
-- Medals: **hand-authored SVG** by me, in the app's style with Огоньёк (no AI image gen).
-- Protections (4 tiers, checked top→bottom):
-  1. **Long vacation** — planned by the user (trip, deload) **or auto** after
-     ~6 weeks (setting 4–12) of uninterrupted training; freezes the streak; free.
-  2. **Sick leave (больничный)** — NEW, independent of vacation allowance: mark a
-     date range **retroactively** ("болел"), streak frozen like vacation,
-     reminders off. Rolling cap: **≤7 days in any 30** (≤14 in 90); beyond the cap
-     the days are unprotected and the UI says so honestly. Health-first messaging:
-     the game never pushes training while sick.
-  3. **Day-off (выходной)** — 1 day; bought in the shop or earned as a reward; taken
-     manually anytime or auto-applied to a missed workout.
-  4. **Freeze (заморозка)** — used only when a day-off isn't available/already spent
-     this run (or the user owns no day-offs). After the freeze day, the next missed
-     day breaks the streak. Max **2 unplanned protected days in a row**.
-  Ladder per missed planned day: vacation/sick → day-off → freeze → streak breaks.
-- Currency: **coins separate from XP** (XP = levels only).
-- Shop assortment: day-offs, freezes, **streak repair**, **XP-booster**, **chest**,
-  **profile cosmetics**.
-- Quests must fit the **fixed plan (1 workout/day)** — no "do many workouts" demands.
-
-## Current state (explored)
-- `src/lib/game.ts` — level(), vacation helpers, advice; `src/lib/achievements.ts` —
-  dayStreak, 16 emoji badges, monthly challenge (goal 12), 3 daily quests.
-- `src/lib/plan.ts` — `planProgress()` pure day-walk; auto-spends bonus days
-  (max `bonusMax`, returns after `bonusRestoreDays`) then freezes (earned only by
-  weekly settlement ≥80%, cap `freezeMax`).
-- `src/routes/play.$workoutId.tsx` — XP = (steps×10+30)×1.5 for bonus workouts.
-- No coins, no shop; vacations free & unlimited (`VacationButton`).
-- Store `pulse-fit-v1` v12; backup v2 per-section JSON; mascot = hand-drawn SVG.
-- `SessionLog.sets` records one entry per performed set; plan editor lives in
-  `plans.tsx` (settings with x/n/y/threshold at the bottom).
-
-## Target model
-
-### Economy (`src/lib/economy.ts`, new — all numbers in one place, tunable)
-Earning (with daily caps against bonus-workout farming):
-| Event | Coins |
-|---|---|
-| Planned workout | +12 |
-| Bonus workout (extra effort) | +20, max 2/day |
-| Daily quest | +6 each; all 3 → +12 combo |
-| Monthly challenge milestones (4/8/12) | +10/+15/+25 |
-| Monthly medal earned | +50 |
-| Streak milestone 7/14/30/60/100 | +15/+25/+50/+100/+200 |
-| Perfect week (all planned done) | chest |
-| Morning/evening chest (first workout <12:00 / >20:00, 1/day) | variable 8–25 |
-| Progression bump reached (new set/rep level) | +15, once per level |
-| Progress photo | +10 |
-| Diary mood/note | +2 |
-| Badge unlock | +10; level-up +20×level |
-
-Spending:
-| Item | Price | Notes |
-|---|---|---|
-| Day-off | 40 | stock cap 7 |
-| Freeze | 65 | stock cap 3 |
-| Streak repair | 150 | within 3 days of a break, restores the broken run |
-| XP-booster ×2 (next workout) | 35 | stock cap 3, consumed at logSession |
-| Chest | 30 | roll: 40% coins 10–50, 25% booster, 15% day-off, 10% freeze, 10% coins 5; 1/day |
-| Cosmetics (avatar rings, profile themes) | 120–300 | 2–3 items to start |
-
-### Protection rework (`src/lib/plan.ts`)
-- `planProgress()` walks history as today, but pools become **stock**:
-  `stock.dayOff`, `stock.freeze` (persisted; weekly settlement keeps granting
-  +1 freeze to stock, capped).
-- Ladder per missed planned day (per run): day-off → freeze → break; at most
-  1 day-off + 1 freeze can protect one consecutive-miss run (max 2 days),
-  third day breaks the streak.
-- **Sick leave**: `Vacation.kind?: "trip" | "deload" | "sick"`; sick behaves like
-  vacation in the walk (skip day, no consumption); allowance enforced at marking
-  time via `sickAllowance(sick, now)` (rolling 30d ≤ 7). Missed-day flow suggests
-  marking sick instead of shaming the user.
-- **Streak repair**: a ledger event dated ≤3 days after `breakAt` revives the run
-  in the pure walk (no streak loss), shown as repaired in UI.
-- **Auto deload (tier 1)**: when the current run reaches `deloadEveryWeeks`
-  (default 6, slider 4–12) and no vacation is active — home card proposes +
-  notification; setting `autoDeload` (default on) inserts a 7-day vacation
-  (`kind: "deload"`) automatically.
-- Old `bonusMax/bonusRestoreDays/freezeMax` semantics retire; caps move to economy.
-
-### Quest rework — "усиленные квесты" (`src/lib/achievements.ts`)
-Every quest closes inside the single planned workout (or one small action after it);
-no "do another workout" demands — extra effort comes in small doses.
-- Slot 1 (always): «Тренировка дня» — planned or bonus workout, +6.
-- Slots 2–3: two quests picked **deterministically per day** from an applicability-
-  filtered pool (never impossible, never random-per-user):
-  - «+2 повторения» — one set with 2+ reps above plan (reps-mode) → verified by
-    `sets[].reps` vs the planned item.
-  - «+2 подхода сверх плана» — extra sets on any exercise (or bonus exercise) →
-    verified by `sets[].extra`.
-  - «Растяжка 5+» — 5+ stretch sets today.
-  - «Быстро: ≤20 минут» — shown only when the day's estimate fits; duration check.
-  - «Дневник» — mood or note on today's session.
-  - «Фото прогресса» — only when the photo reminder is due.
-  - «Бонусная тренировка» — rest-day slot; a second (bonus) session today.
-- All 3 done → +12 coin combo + mascot line. The XP quest is removed (depends on
-  workout size, not effort).
-- Quest progress is visible **in the player header** («+2 повторения · 0/1» with a
-  check) — like Duolingo showing quests inside the lesson.
-- Player enablers required: (1) **rep stepper** on set completion (reps mode,
-  defaults to plan, optional +/- → logged), (2) **«+ подход»** button on the rest
-  screen (appends an extra, flagged step). Optional later: bonus-exercise picker
-  in Summary. These same fields unlock future rep PRs.
-- Data: `SessionLog.sets[]` gains optional `reps?: number` and `extra?: boolean`;
-  session gains optional `metronome?: boolean` — migration-safe (old logs valid).
-- Weekly quest card («Идеальная неделя», «3 дня с доп-подходами» → chest) is a
-  candidate for a later phase, not in this batch.
-- Monthly challenge (goal 12) and weekly settlement stay as-is (plan-compatible).
-
-### Progression (plan creation, `src/lib/plan.ts` + `plans.tsx`)
-- `Plan.progression?: { addSetEveryLoops?: number; addRepEveryLoops?: number;
-  setCap: number; repCap: number; timeCapSec: number }`.
-- Pure resolver `applyProgression(plan, items, loopIndex)` — `loopIndex` = full
-  cycle loops since `plan.origin`; per-item: sets = min(base + bumps, setCap),
-  reps/seconds likewise (time-mode exercises gain seconds up to `timeCapSec`).
-- Shared by Home card, plans forecast, and the play route (single source, no drift).
-- UI block «Прогрессия» in plan settings: toggles + sliders (every N loops: +1 set;
-  every M loops: +1 rep / +5 сек), caps (sets ≤6, reps ≤15 / 90 сек).
-- Surfaces: «+1 подход» badge on today's card and in the player; first bump per
-  level = coin reward + «Новая высота» quest. Deload/vacation naturally pauses it.
-
-### Store (v13) & backup
-- New state: `coins`, `ledger: {date, item, qty, source, delta}[]`,
-  `stock: {dayOff, freeze}`, `boosts`, `ownedCosmetics: string[]`, `activeCosmetic`,
-  `autoDeload: boolean`, `deloadEveryWeeks: number`, `plan.progression`,
-  `Vacation.kind`. Optional log fields (no migration risk): `sets[].reps`,
-  `sets[].extra`, session `metronome`.
-- Migration v12→v13: `bonusLeft → stock.dayOff`, `freezeLeft → stock.freeze`,
-  existing vacations → `kind: "trip"`, progression defaults off, coins start at 0.
-- `backup.ts`: coins/ledger/stock/cosmetics go into the game section (v2 keeps import).
-
-### Reward moments (the "pull")
-- Post-workout Summary: coins counter ticks up, **chest pop** (chance-based),
-  booster banner if active, quest-completion toasts.
-- Home: quest cards show coin rewards; monthly challenge gets milestone markers;
-  streak-milestone progress line; sick-leave card when missed days are detected.
-- Header: coin chip (click → `/shop`) with a dot when a free daily chest is claimable.
-- Achievements screen: badges show coins earned on unlock.
-
-### Illustrated medals (`src/components/game/medals.tsx`, new)
-- Hand-authored SVG components, token colors only, same character as `Mascot`:
-  16 badge redesigns (streak flame tiers, lark/night owl, steel core, legs, atlas,
-  milestones) + **12 monthly medals** (seasonal Огоньёк: hat, glasses, wreath…).
-- Locked state = monochrome silhouette; medal collection grid on profile
-  ("Витрина") with "эта медаль больше никогда не будет доступна" copy for monthly.
-- Re-skin: `Badges.tsx`, `MonthlyChallenge.tsx`, profile `BadgeStrip`.
-
-## Steps
-1. **Economy core** — `economy.ts` + tests; store v13 migration; `plan.ts` ladder
-   (day-off → freeze → break) + sick leave + repair + deload; quest rework in
-   `achievements.ts`; update `plans.tsx` counters & settings text.
-2. **Progression** — resolver + tests; plan settings UI; play/Home surfaces;
-   bump rewards.
-3. **Shop** — `/shop` route (tabs: Защита / Улучшения / Косметика), buy flows,
-   insufficient-coins state, free daily chest, header coin chip.
-4. **Reward moments** — play Summary coins/chest, home quest rewards + sick/deload
-   cards, milestone toasts/notifications.
-5. **Medals** — SVG pack + collection screen + re-skin of badge surfaces.
-6. **Polish** — backup integration, full test pass, browser walkthrough
-   (390px/1440px), balance notes.
-
-## Files
-- New: `src/lib/economy.ts`, `src/lib/__tests__/economy.test.ts`,
-  `src/routes/shop.tsx`, `src/components/game/shop/*`,
-  `src/components/game/medals.tsx`, `src/lib/__tests__/plan.economy.test.ts`,
-  `src/components/game/SickDialog.tsx`.
-- Changed: `src/lib/store.ts` (v13), `src/lib/plan.ts` (ladder, sick, progression),
-  `src/lib/achievements.ts` (quest pool + rotation), `src/lib/game.ts` (deload helper),
-  `src/lib/backup.ts`, `src/components/game/AppShell.tsx`, `Badges.tsx`,
-  `MonthlyChallenge.tsx`, `VacationButton.tsx` (kind-aware),
-  `useReminders.ts` (deload/sick notify),
-  `routes/play.$workoutId.tsx` (rep stepper, «+ подход», quest progress header,
-  progression resolver for steps),
-  `routes/{index,plans,profile,achievements}.tsx`.
-
-## Risks
-- **Farming** (bonus workouts for coins): daily caps in economy.
-- **Sick-leave abuse**: rolling caps; no coins earned on sick days.
-- **Walk correctness** with stock events + repairs: dedicated tests for interleavings
-  (buy-before-miss, buy-after-miss, run limits, settlement during run).
-- **Progression drift**: play route must use the same resolver as previews — tested.
-- **Quest honesty**: quests must be verifiable from logged data — the rep stepper
-  and «+ подход» ship in the same step as the quests that need them; quests whose
-  data can't exist (old logs) degrade gracefully (show as "сделай сегодня").
-- **Balance**: all numbers centralized; expect iteration after playtesting.
-- **Migration**: users keep current protections (mapped to stock); vacations get
-  `kind: "trip"` — no data loss.
-- **Asset volume**: medals phased last; silhouette fallback if a design slips.
-- Chest RNG must be deterministic in tests (seeded roll per event id).
-
-## Verification
-- `pnpm typecheck && pnpm lint && pnpm test && pnpm build`.
-- Unit: coin pricing + caps, ladder interleavings, chest EV < price, migration
-  v12→v13, progression resolver (bump cadence, caps, time-mode), sick allowance,
-  quest rotation (same day → same quests), applicability filters, combo bonus,
-  quest detection from logs (reps above plan, extra sets).
-- Browser: buy day-off → skip a planned day → walk shows protection consumed;
-  sick marking flow; repair flow; chest animation; progression bump visible in
-  player; shop at 390/1440; zero console errors.
-
----
-
-# Android build fix
-
-## Goal
-
-Make the current web app build usable as bundled Capacitor assets for the existing Android Studio project, so an Android APK includes the latest app instead of stale assets.
-
-## Steps
-
-1. Restore the Vite/TanStack Start configuration from the last committed version, then configure a production output that contains a valid `index.html` and client assets in Capacitor's configured `webDir` (`.output/public`). Preserve the existing web development flow.
-2. Add package scripts for the Android workflow: build the web app, synchronize the generated assets with Android, and open the project in Android Studio.
-3. Keep the existing Capacitor app ID, name, Android project, and local-only SDK configuration unchanged. Document the commands and required JDK/Android SDK environment.
-4. Verify the web build output, run Capacitor sync, and build the Android debug APK using the installed Android Studio JDK. Run the relevant typecheck/lint/tests if configuration changes affect them.
-
-## Expected files
-
-- `vite.config.ts` — undo the uncommitted static/SSR override and configure the supported production output.
-- `package.json` — add Android build/sync scripts without changing package manager or dependencies.
-- `README.md` — document the Android Studio workflow and environment requirements.
-- `docs/plan.md` — this plan.
-
-## Risks
-
-- TanStack Start's current server-rendered output may not be directly bundleable as a standalone Capacitor app. The chosen configuration must produce a valid client entry point without breaking the existing web app.
-- The standalone APK bundles the web UI, not the TanStack server runtime. AI, article import, and FFmpeg server functions require a deployed server endpoint.
-- The current `android/app/src/main/assets/public` is stale; synchronization must replace it with the freshly built assets before APK creation.
-- Android build requires a JDK and Android SDK configured on the local machine. This repository's `android/local.properties` is machine-specific and must not be committed.
-
-## Outcome
-
-Approved and implemented: the SPA shell is emitted as `.output/public/index.html`, and the Android sync/build path was verified. Typecheck and tests passed; lint completed with existing warnings.
-
----
-
-# Android notifications and camera framing
-
-## Goal
-
-Make scheduled workout/photo reminders arrive while the Android app is backgrounded or closed, and show/capture the Samsung Galaxy A53 5G portrait camera feed without cutting off its top or bottom.
-
-## Steps
-
-1. Add `@capacitor/local-notifications` for native Android scheduling and permission requests; retain the existing browser notification behavior for web.
-2. Connect the workout/photo reminder schedule and settings updates to Android's local notification scheduler. Replace/cancel pending app-managed reminders when settings or schedule change, and avoid posting duplicate foreground reminders. Document Android's notification permission and battery/force-stop limitations.
-3. Request a portrait 3:4 camera aspect ratio where supported. Inspect actual video dimensions at runtime; if the Android WebView reports a landscape frame while the device is held vertically, display the frame upright in a contained portrait viewport and rotate the captured canvas consistently, rather than cropping its top and bottom.
-4. Add focused tests for portrait aspect-ratio constraints, orientation normalization, and reminder schedule generation/cancellation. Run typecheck, lint, tests, production build, Capacitor sync, and Android debug build.
-
-## Expected files
-
-- `package.json` and the npm lockfile — add the Capacitor Local Notifications plugin; required to deliver notifications while JavaScript is stopped.
-- `src/lib/notify.ts`, `src/components/game/useReminders.ts`, `src/hooks/usePhotoReminder.ts`, and `src/components/game/settings/NotificationsGroup.tsx` — native notification permission, scheduling, and settings integration with a web fallback.
-- `src/lib/capture.ts`, `src/components/game/CameraStage.tsx`, and `src/lib/__tests__/capture.test.ts` — portrait stream/capture orientation handling.
-- `README.md` — Android notification behavior and permissions.
-- `docs/plan.md` — this plan.
-
-## Risks
-
-- Android 13+ requires notification permission, and Android vendor battery optimizations or force-stopping the app can restrict alarms. The app must report denied permission clearly and avoid claiming delivery in those states.
-- The device camera may report sensor dimensions differently across WebView/Android versions. Runtime dimension checks should rotate only a landscape feed displayed in portrait, without stretching or cropping native portrait feeds.
-- Physical Galaxy A53 verification is not available in this environment; the updated APK will need a device retest.
-
-## Outcome
-
-Implemented and verified with automated tests, TypeScript, lint, production build, Capacitor sync, and Android debug build. Physical Galaxy A53 verification remains outstanding.
-
----
-
-# Follow-up: Galaxy A53 camera and pose reliability
-
-## Goal
-
-Make portrait camera preview and saved photos upright and visible, restore MediaPipe pose detection in the installed Android app, and prevent camera initialization from cutting off the spoken setup instructions.
-
-## Findings
-
-- On the connected Galaxy A53, the camera track reports 1280×720 in portrait. The preview canvas is 720×1280, but its sampled pixels are all zero: the current 90-degree canvas transform draws the frame outside the canvas.
-- MediaPipe falls back to manual mode because the installed WASM JavaScript throws during initialization. The copied JS and package JS have the same size but different contents; `prepare-mediapipe.mjs` currently skips copying based only on file size.
-- Camera enumeration can set `cameraDeviceId` after the initial stream starts. Since that state restarts the camera effect, its cleanup can stop the initial voice prompt and unnecessarily reopen the camera.
-
-## Steps
-
-1. Use explicit canvas transforms for upright rotation and front-camera mirroring. Revert the unsuccessful sensor-native 3:4 / 4:3 constraints to the prior 9:16 / 16:9 settings. Recalculate when the preview or video dimensions change, and avoid reconfiguring the camera track during screen rotation; add regression tests for constraints, transform matrices, and captured-frame sizing.
-2. Compare WASM asset contents, not only file sizes, when preparing MediaPipe assets so the app bundles matching JS and WASM files.
-3. Keep automatic active-camera discovery from restarting the stream; only a user-selected camera should trigger a camera switch.
-4. Build and sync the Android app, install it on the connected Galaxy A53, and verify portrait preview, a correctly oriented saved frame, MediaPipe pose guidance, automatic capture, and uninterrupted spoken instructions.
-
-## Files
-
-- `src/lib/capture.ts`
-- `src/lib/__tests__/capture.test.ts`
-- `scripts/prepare-mediapipe.mjs`
-- `src/components/game/CameraStage.tsx`
-- `docs/plan.md`
-
-## Risks
-
-- Incorrect mirror/rotation transform order could fix the rear camera while reversing the front-camera preview or capture; verify both matrices with unit tests.
-- MediaPipe still depends on the Android WebView's WASM support and available memory; confirm the actual runtime reaches pose-ready state on the device.
-- Android build/sync can update generated assets. Preserve unrelated existing worktree changes and verify only task-related files are altered.
-
-## Verification
-
-Run the repository's typecheck, lint, tests, and production build. Then sync/build/install the Android debug app and inspect the real-device WebView state and logs while testing the capture flow in portrait.
-
-## Current status
-
-The first Android iteration fixed the MediaPipe JS/WASM mismatch; the device reached AI-control mode, but the user still observed a cropped frame. Starting in landscape and rotating back to portrait has allowed a successful capture, suggesting startup orientation timing remains relevant. A 9:16 portrait build retained a square crop, and the sensor-native 3:4 / 4:3 build was reported worse. Revert to the previously installed 9:16 / 16:9 request and validate the next camera candidate on the Galaxy A53 before considering CameraX.
-
----
-
-# Camera framing and persistent voice guidance
-
-## Goal
-
-Undo the latest 3:4 camera constraint that worsened framing, and keep spoken pose guidance active from camera readiness through the automatic or manual photo capture.
-
-## Steps
-
-1. Return to the previously installed 9:16 portrait / 16:9 landscape ideal constraints and retain the existing orientation normalization. Do not claim framing is fixed until the user verifies the installed build.
-2. Speak the latest actionable camera status when it changes and repeat it every 6 seconds while the camera is ready and the shutter countdown is not active. The countdown announcement takes priority; stop guidance when a photo is captured, the camera exits, or the app backgrounds.
-3. Add focused tests for the guidance repeat/pause/stop behavior and retain camera constraint tests.
-4. Run typecheck, lint, tests, production build, sync/build/install the Android app, and ask the user to verify portrait framing and uninterrupted guidance on the Galaxy A53.
-
-## Files
-
-- `src/lib/capture.ts`
-- `src/lib/__tests__/capture.test.ts`
-- `src/components/game/CameraStage.tsx`
-- `src/lib/voice-guidance.ts` (only if needed to isolate and test repeat timing)
-- `src/lib/__tests__/voice-guidance.test.ts` (only if the helper is added)
-- `docs/plan.md`
-
-## Risks
-
-- Returning to 9:16 restores the less-bad previous behavior but does not guarantee portrait framing is fixed; device-specific camera selection/cropping may still require CameraX.
-- Repeating rapidly changing hints can interrupt speech. Repeat only the latest status, throttle status changes if necessary, suspend repetition during the countdown, and stop on capture/background/unmount.
-- The phone's visual result must be verified by the user; do not infer framing from a successful build or orientation metadata alone.
-
-## Current status
-
-The unsuccessful 3:4 / 4:3 camera request has been reverted. The latest Android build adds repeated, latest-only spoken status guidance with countdown pause and capture/background/unmount cleanup. Focused tests and all 140 tests pass; typecheck, lint, production build, and Android debug build pass. The build is installed on the Galaxy A53; portrait framing and real-device voice timing still need user verification.
+# План: исправление багов, адаптивность и ИИ-чат
+
+Дата: 2026-11-03. Исследование: статический аудит + проверка в браузере (dev-сервер, Playwright),
+вьюпорты 320–1440, консоль чистая, проблемы вёрстки воспроизведены.
+
+## 1. Подтверждённые проблемы
+
+### A. Краш «r.replace is not a function» (ИИ-упражнения)
+- `src/lib/ai.functions.ts:84` — для OpenAI-совместимых провайдеров
+  `content = j.choices?.[0]?.message?.content ?? ""`: если сервер вернул `content` массивом
+  content-part'ов или объектом (не строкой), `?? ""` не срабатывает, а `!out` не ловит
+  (массив/объект — truthy), наружу возвращается не-строка.
+- `src/lib/clients.ts:95-98` — `text.replace(/^```(json)?/m, "")` падает
+  «TypeError: r.replace is not a function» (в минифицированном билде переменная `text` компилируется в `r`).
+- Ошибка доходит до пользователя сырым минифицированным текстом через `toast.error` (`library.tsx:231`).
+
+### B. Адаптивность («элементы едут на разных телефонах»)
+Проверено в браузере:
+- **`library.tsx:65-78`** — ряд из 4 кнопок («Своё», «Из YouTube», «ИИ», «Из статьи») не помещается
+  в 378px: «Из статьи» вылезает за край (right=414 > viewport 378) → горизонтальный скролл страницы,
+  вёрстка «съезжает». На /, /plans, /profile, /settings, /progress, /gallery переполнения нет.
+- **Диалоги на `vh`**: `ExerciseEditor.tsx:56` (`max-h-[90vh]`), `library.tsx:168,189,202` (`85vh`),
+  `plans.tsx:320`, `gallery.tsx:829`, `PhotoEditDialog.tsx:18`, `PhotoCompareDialog.tsx:50`,
+  `PhotoGroupDialog.tsx:31`, `settings/DataGroup.tsx:150`, `onboarding/Onboarding.tsx:129`.
+  При открытой клавиатуре / динамическом тулбаре Android `vh` не пересчитывается → низ диалога
+  (кнопка «Сохранить») уходит за видимый вьюпорт — совпадает со скриншотом пользователя.
+- **`ExerciseEditor.tsx:61-73,135-158`** — фикс. ширина `w-16` (emoji) и `w-full`-input в `flex`
+  с BPM-кнопками 40/60/90: при ≤375px и увеличенном системном шрифте элементы конфликтуют за ширину.
+- **`dialog.tsx:47`** — X-кнопка `absolute right-4 top-4`, у заголовка нет `pr-10`: на длинных
+  названиях иконка закрывает текст.
+- **`AppShell.tsx:57`** — двойной верхний safe-area: `sticky top-[env(safe-area-inset-top)]` плюс
+  `pt-[max(0.75rem,env(safe-area-inset-top))]` — на устройствах с большим вырезом шапка смещается.
+- **`AppShell.tsx:84-85`** — нижний навбар `fixed bottom-0` поверх контента: в браузере (insets=0)
+  под него подлезает контент (на скриншоте: подписи «История», «0/3…» срезаны баром); `main`
+  компенсирует хардкодом `pb-32`.
+- **`AppShell.tsx:81`** — `main key={pathname} animate-rise` (translateY, 600 мс) на каждом переходе
+  превращает `main` в containing-block для всех `fixed`-потомков (FloatingSaveBar и др.; комментарий
+  в `FloatingSaveBar.tsx:10`) и не отключается при `prefers-reduced-motion`.
+- Метка «Тренировки» в навбаре без `truncate` — при системном font-scale высота бара плавает.
+- Второстепенное: `CameraStage.tsx:346` (`h-[100dvh]`), сетки `grid-cols-7/10/3` с длинными русскими
+  подписями (`index.tsx:186`, `plans.tsx:135` и др.), `play.$workoutId.tsx:503` (`pt-16` вместо
+  safe-area), Toaster `top-center` без учёта safe-area-top (`__root.tsx:140`).
+
+### C. Озвучка подсказок пропадает (режим фото-прогресса)
+Механизм: rAF-цикл камеры → `say()` (`CameraStage.tsx:140-146`) → `guidance.update()`
+(`voice-guidance.ts`) → `setInterval` повторов → `speak(prompt, { interrupt: true })` → web-ветка
+`voice.ts:77-86`. Причины:
+1. **Гонка cancel→speak** (`voice.ts:78-79`): каждый повтор — `speechSynthesis.cancel()` и сразу
+   `speak()`. На Android Chrome после нескольких таких итераций движок остаётся в «мёртвом»
+   состоянии (очередь «speaking», звука нет). Нет ни задержки между cancel и speak, ни
+   `pause()/resume()`-пинга.
+2. **Utterance не удерживается и без обработчиков** (`voice.ts:79-85`): локальная переменная без
+   `onend/onerror` — её может собрать GC, ошибки движка полностью невидимы.
+3. **Повтор живёт только на интервале** (`voice-guidance.ts:1`, 6 с), который гасится: `pause()`
+   в обратном отсчёте и в `shoot()`; после удачного фото `guidance.stop()`; после рестарта камеры
+   (смена ориентации убивает медиатрек → restart, фоновое приложение → bump `attempt`) новый
+   guidance получает prompt только из следующего `say()`, а путь ошибки старта камеры
+   (`CameraStage.tsx:296-302`) не печатает статус и не вызывает `say()` → тишина, пока текст
+   подсказки не изменится.
+4. Двойной дедуп (`voice-guidance.ts:30` + `CameraStage.tsx:141`) без watchdog: если интервал умер
+   или announce провалился, тот же текст больше не повторится.
+5. Интервал 6 с против ожидаемых пользователем ~2 с в режиме фото-прогресса.
+
+## 2. Исправления
+
+### F1. «r.replace is not a function» — P0, 2 файла
+- `ai.functions.ts`: вынести чистую `normalizeAiContent(value: unknown): string` — строка,
+  массив строк, массив content-part'ов (`p.text`), null → `""`; для не-строки/неизвестной формы
+  ошибка «ИИ вернул ответ в неожиданном формате». Применить в `callOnce` (обе ветки: gemini
+  parts и openai content).
+- `clients.ts` `ask`: guard `typeof text === "string"` + понятное русское сообщение.
+- Тесты на `normalizeAiContent`: строка / массив строк / массив частей / объект / null.
+
+### F2. Адаптивность — P0
+1. `library.tsx:65-78`: кнопки → `flex flex-wrap` (на узких экранах 2 ряда), `shrink-0`,
+   `whitespace-nowrap`; проверить 320/360/393/768/1440.
+2. Все `vh` → `dvh` в перечисленных диалогах. `ExerciseEditor` на мобильных: почти на всю высоту
+   (`max-h-[95dvh]`), заголовок `truncate pr-10`, «Сохранить» sticky внизу диалога (достижима
+   без прокрутки содержимого до конца).
+3. `ExerciseEditor` строки (61-73, 135-158): инпуты `flex-1 min-w-0`, emoji-инпут `w-14 shrink-0`,
+   BPM-кнопки `shrink-0`.
+4. `AppShell`: убрать двойной inset (обычный `sticky top-0` + фон, чтобы контент не просвечивал
+   над стеклянной шапкой); стат-пиллы `min-w-0`, компактные подписи; метку «Тренировки»
+   `truncate`; `pb-32` у `main` заменить на отступ, вычисленный из фактической высоты навбара
+   + `env(safe-area-inset-bottom)` (замерять, не хардкодить).
+5. `animate-rise`: при переходах анимировать только opacity (transform убрать или перенести на
+   внутренний элемент), добавить `prefers-reduced-motion` — fixed-элементы перестанут прыгать.
+6. Toaster: `top-center` + `offset` с `env(safe-area-inset-top)`.
+7. Точечные: `play.$workoutId.tsx:503` — safe-area вместо `pt-16`; подписи в `grid-cols-7/10/3`
+   — `truncate min-w-0`; общие safe-area-классы объявить в `styles.css` один раз.
+- Проверка: скриншоты 320/360/390/768/1440, широкий текст и font-scale, фокус — «Сохранить» видна
+  при открытой клавиатуре (visualViewport-симуляция).
+
+### F3. Озвучка (photo capture) — P0
+1. `voice.ts`, web-ветка:
+   - удерживать utterance в module-массиве, чистить по `onend/onerror`;
+   - `interrupt`: `cancel()` → speak с небольшой задержкой (~40 мс); сторож: если движок
+     «застрял» (`speaking=true`, аудио не пришло) — `resume()`-пинг;
+   - unit-тесты с моком `speechSynthesis`: interrupt-повторы, ошибки движка (onerror),
+     удержание ссылки.
+2. `voice-guidance.ts`:
+   - интервал конфигурируемый: `createVoiceGuidance(announce, { repeatMs })`; capture-подсказки —
+     **2500 мс** (решение пользователя), остальные контексты — 6 с;
+   - `resume()` гарантирует re-announce; добавить `reannounce()`/`getPrompt()`, чтобы CameraStage
+     после рестарта камеры или смены ориентации принудительно возобновлял озвучку текущей подсказки;
+     самовосстановление интервала в `update()` (fallback, если таймер умер).
+   - обновить тесты (fake timers уже используются).
+3. `CameraStage.tsx`:
+   - в catch рестарта камеры (296-302): печатать статус и вызывать `guidance.update(статус)`,
+     чтобы после bump `attempt` озвучка возрождалась;
+   - `appStateChange` active → после перезапуска камеры `reannounce()`;
+   - `isPortrait` пересчитывать при orientationchange (минор).
+- Реальный Android Chrome из этой среды не проверить — решение эмпирическое (стандартные
+  воркэраунды известной проблемы), поэтому максимум unit-покрытия.
+
+### F4. ИИ-чат (новое; кнопка в шапке) — фича
+Утверждённые решения:
+- Интервал повторов capture-подсказок: **2500 мс** (см. F3).
+- Действия: пользователь сам настраивает доступы (трёхпозиционно: всегда / спрашивать / нельзя)
+  как в реальном ИИ-чате. Разрешено почти всё в приложении, кроме конфиденциальных настроек
+  (API-ключи — их ИИ не меняет, но может подсказать, как настроить). По сути — полноценный
+  чат об тренировках внутри приложения.
+- История чатов: локально **и** отдельный пункт бэкапов в настройках рядом с остальными.
+- Память: короткая структурированная память о пользователе для персональных советов, с жёстким
+  бюджетом токенов. «Улучшить ИИ» в редакторе — оставить как есть.
+
+Разбивка на под-шаги (каждый — отдельный коммит):
+
+**F4a. Сервер `aiChat`** (`ai.functions.ts`)
+- POST-функция: `messages: [{role, content, parts?}]`, провайдер/ключи/модель/`system`;
+  переиспользовать ротацию ключей (`askWithKeys`/`callOnce` — минимальный рефакторинг на multi-turn).
+- Для gemini — через `@google/genai` SDK (как существующий `aiSplitWorkout`, ai.functions.ts:305+):
+  multi-turn `contents`, вложения к сообщению (изображения, короткие видео, файлы, ссылки —
+  inlineData/FileData), ответ по structured output `{ reply, actions?: Action[], memory? }`.
+- Для openai-совместимых — только текст (без вложений), `response_format json_object` с фолбэком
+  «верни только JSON». Вложение при таком провайдере → честное сообщение «вложения поддерживаются
+  только с Gemini».
+- История режется до последних ~20 сообщений на запрос (бюджет контекста).
+- function calling / code execution режимы Gemini — v1.x (после стабилизации базового чата).
+
+**F4b. Хранилище чата и UI**
+- `src/lib/chat/`: `types.ts`, `actions.ts` (белый список допустимых операций — см. F4c),
+  `chat-store.ts` — отдельный persist-ключ (`sprout-chat-v1`): сессии
+  `{ id, title (из первого сообщения), createdAt, messages[] }`, память пользователя.
+- Маршрут `/chat`: список сообщений, композер (текст + скрепка для вложений при gemini),
+  карточки-предпросмотр действий, «Новый чат», список прошлых чатов (drawer), состояния
+  loading/empty/error, длинные тексты, `prefers-reduced-motion`. Текущий стиль, без градиентов.
+- Кнопка в шапке: `AppShell.tsx:70` — между `VacationButton` и Settings, иконка MessageCircle,
+  ссылка `/chat`, стиль h-10 w-10 rounded-full как соседние.
+- Вход из библиотеки: «ИИ» (`library.tsx:72-74`) → `/chat?seed=exercise` (контекст «создаём
+  упражнение»). Старый `AiTextTab` удалить. «Улучшить ИИ» в редакторе — без изменений.
+
+**F4c. Права доступа и применение действий**
+- Настройки доступа (раздел в Settings / в самом чате — диалог): домены
+  упражнения / тренировки / план / дневник (sessions) / фото-группы и бытовые настройки
+  (напоминания, озвучка, отпуска) — по каждому: «всегда · спрашивать · нельзя». По умолчанию у
+  мутирующих доменов — «спрашивать», конфиденциальный домен (`ai`-ключи, `ffmpegKey`) запрещён
+  намертво (не редактируется в UI).
+- Модель возвращает `actions[]` из фиксированного каталога, каждый валидируется заново
+  (санитайзеры: `sanitizeExercise`, `buildWorkoutFromSplit` и т.п.), на карте — понятная сводка
+  («создать упражнение „Приседания“ », «обновить план …»). «Всегда» — применяется сразу;
+  «спрашивать» — кнопка «Применить/Пропустить»; «нельзя» — модель об этом знает системным
+  промптом и не предлагает.
+- Удаления (`deleteExercise`, `deleteWorkout`, `removePlanStep`) — только через «спрашивать»,
+  даже если домен «всегда».
+
+**F4d. Память о пользователе (компактная)**
+- Structured memory: тегированные короткие факты (цель, травмы, инвентарь, предпочтения,
+  частота), caps: ≤20 фактов, каждый ≤90 символов; модель возвращает `memory`-diff
+  (обновить/заменить/удалить факт), клиент применяет дедупом, в системный промпт — одной
+  компактной строкой (порядка 300–400 токенов максимум).
+- Чистится кнопкой в настройках чата; экспортируется вместе с чатами.
+
+**F4e. Бэкапы чата**
+- В `backup.ts` (v2) добавить секцию «Чаты» — отдельный JSON-файл (как другие секции), импорт
+  merge'ом; память включена в файл секции.
+
+## 3. Второстепенные рекомендации (P2)
+- Тесты: `normalizeAiContent`, конфиг повторов voice-guidance, (по желанию) RTL-смоук редактора
+  на «Сохранить» доступна.
+- FOUT шрифта, `dvh` камеры — минорные, правки по ходу.
+- Capacitor Keyboard (`resize` behavior) — проверять на реальном APK, из среды не оценить.
+
+## 4. Порядок работы и коммиты
+1. `fix:` F1 (r.replace) + тесты.
+2. `fix:` F2 адаптивность блоками (диалоги → AppShell → точечные), после каждого блока —
+   браузерная проверка и скриншоты.
+3. `fix:` F3 озвучка + тесты.
+4. `feat:` F4 ИИ-чат (серверная функция → store/маршрут → кнопка и точка входа → полировка).
+5. Финал: `pnpm lint && pnpm typecheck && pnpm test && pnpm build`, полный браузерный проход
+   (loading/empty/error/длинный текст; скриншоты 390 и 1440), финальный отчёт.
+
+Риски: правки AppShell касаются всех экранов — регресс-проход каждого маршрута; высота навбара
+замеряется, не хардкодится; multi-turn + json у openai-совместимых может не поддерживаться —
+есть текстовый фолбэк.
+
+## 5. Что не удалось проверить из этой среды
+- Реальное поведение speechSynthesis на Android Chrome (эмуляция невозможна; оправдывает максимум
+  unit-покрытия воркэраундов).
+- Реальный APK: клавиатура, safe-area.
+- Живой ответ ИИ-провайдера пользователя (в моём браузере нет ключей): проверка F1 — юнит-тестом
+  и smoke-запросом на dev-сервере.
