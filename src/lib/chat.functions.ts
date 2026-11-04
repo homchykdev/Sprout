@@ -70,6 +70,58 @@ interface ChatKeyFailure {
   error: unknown;
 }
 
+function formatUpstreamError(error: unknown, keys: string[]): string {
+  const raw = error instanceof Error ? error.message : "Неизвестная ошибка";
+  let detail = raw;
+
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed === "object" && parsed !== null && "error" in parsed) {
+      const body = (parsed as { error?: unknown }).error;
+      if (typeof body === "object" && body !== null) {
+        const apiError = body as {
+          code?: unknown;
+          message?: unknown;
+          status?: unknown;
+          details?: unknown;
+        };
+        const parts = [
+          typeof apiError.code === "number" ? `HTTP ${apiError.code}` : "",
+          typeof apiError.status === "string" ? apiError.status : "",
+          typeof apiError.message === "string" ? apiError.message : "",
+        ].filter(Boolean);
+
+        if (Array.isArray(apiError.details)) {
+          for (const item of apiError.details) {
+            if (typeof item !== "object" || item === null) continue;
+            const data = item as Record<string, unknown>;
+            const violations = Array.isArray(data["violations"]) ? data["violations"] : [];
+            for (const violation of violations) {
+              if (typeof violation !== "object" || violation === null) continue;
+              const v = violation as Record<string, unknown>;
+              if (typeof v["quotaMetric"] === "string")
+                parts.push(`quotaMetric=${v["quotaMetric"]}`);
+              if (typeof v["quotaId"] === "string") parts.push(`quotaId=${v["quotaId"]}`);
+              if (typeof v["quotaDimensions"] === "object" && v["quotaDimensions"] !== null) {
+                parts.push(`quotaDimensions=${JSON.stringify(v["quotaDimensions"])}`);
+              }
+            }
+            if (typeof data["retryDelay"] === "string")
+              parts.push(`retryDelay=${data["retryDelay"]}`);
+          }
+        }
+        if (parts.length) detail = parts.join("; ");
+      }
+    }
+  } catch {
+    // Keep the original upstream message if it isn't JSON.
+  }
+
+  return keys
+    .reduce((text, secret) => text.replaceAll(secret, "[ключ скрыт]"), detail)
+    .slice(0, 1200);
+}
+
 /** Builds a diagnostic that identifies the provider and attempted keys without exposing them. */
 export function formatChatKeyFailures(
   provider: "gemini" | "openai",
@@ -88,12 +140,7 @@ export function formatChatKeyFailures(
 
   const details = failures.map(({ keyIndex, key, error }) => {
     const keyLabel = `ключ ${keyIndex + 1}/${keys.length}${key.length > 4 ? ` (••••${key.slice(-4)})` : ""}`;
-    const message = error instanceof Error ? error.message : "Неизвестная ошибка";
-    const safeMessage = keys.reduce(
-      (text, secret) => text.replaceAll(secret, "[ключ скрыт]"),
-      message,
-    );
-    return `${keyLabel}: ${safeMessage.slice(0, 240)}`;
+    return `${keyLabel}: ${formatUpstreamError(error, keys)}`;
   });
 
   return new Error(`Источник: ${source}. Запрос не выполнен:\n${details.join("\n")}`);

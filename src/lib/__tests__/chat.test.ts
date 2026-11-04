@@ -226,6 +226,51 @@ describe("chat grounding sources", () => {
 });
 
 describe("chat key error diagnostics", () => {
+  it("extracts Gemini quota details instead of truncating the raw JSON", () => {
+    const error = formatChatKeyFailures(
+      "gemini",
+      undefined,
+      ["gemini-secret"],
+      [
+        {
+          keyIndex: 0,
+          key: "gemini-secret",
+          error: new Error(
+            JSON.stringify({
+              error: {
+                code: 429,
+                status: "RESOURCE_EXHAUSTED",
+                message: "You exceeded your current quota.",
+                details: [
+                  {
+                    "@type": "type.googleapis.com/google.rpc.QuotaFailure",
+                    violations: [
+                      {
+                        quotaMetric:
+                          "generativelanguage.googleapis.com/generate_content_free_tier_requests",
+                        quotaId: "GenerateRequestsPerDayPerProjectPerModel-FreeTier",
+                        quotaDimensions: { model: "gemini-2.5-flash", location: "global" },
+                      },
+                    ],
+                  },
+                ],
+              },
+            }),
+          ),
+        },
+      ],
+    );
+
+    expect(error.message).toContain("HTTP 429");
+    expect(error.message).toContain("RESOURCE_EXHAUSTED");
+    expect(error.message).toContain(
+      "quotaMetric=generativelanguage.googleapis.com/generate_content_free_tier_requests",
+    );
+    expect(error.message).toContain("quotaId=GenerateRequestsPerDayPerProjectPerModel-FreeTier");
+    expect(error.message).toContain("model");
+    expect(error.message).not.toContain("gemini-secret");
+  });
+
   it("parses the JSON contract when Gemini wraps it in prose or a code fence", () => {
     expect(parseChatPayload('Ответ:\n```json\n{"reply":"Проверено"}\n```')).toEqual({
       reply: "Проверено",
