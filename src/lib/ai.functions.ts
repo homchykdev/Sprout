@@ -24,10 +24,11 @@ export function statusOf(e: unknown): number | null {
 
 /** Maps an upstream HTTP status to a clean Russian error for the user. */
 export function mapHttpError(status: number, body: string): Error {
+  const withStatus = (message: string) => Object.assign(new Error(message), { status });
   if (status === 401 || status === 403 || isBadKeyMessage(body))
-    return new Error("ИИ-ключ не принят. Проверьте его в настройках.");
-  if (status === 429) return new Error("Лимит запросов ИИ исчерпан. Попробуйте чуть позже.");
-  return new Error(`ИИ-сервис вернул ошибку ${status}: ${body.slice(0, 200)}`);
+    return withStatus("ИИ-ключ не принят. Проверьте его в настройках.");
+  if (status === 429) return withStatus("Лимит запросов ИИ исчерпан. Попробуйте чуть позже.");
+  return withStatus(`ИИ-сервис вернул ошибку ${status}: ${body.slice(0, 200)}`);
 }
 
 /**

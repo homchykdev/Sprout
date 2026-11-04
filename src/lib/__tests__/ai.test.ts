@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { maskKey, promoteKey } from "../ai-keys";
+import { askWithKeys, mapHttpError, statusOf } from "../ai.functions";
 import {
   articleExercise,
   buildWorkoutFromExercises,
@@ -12,6 +13,10 @@ import {
 import { migrateState } from "../store";
 import type { Exercise } from "../types";
 
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
 describe("ai key helpers", () => {
   it("masks keys keeping the last 4 chars", () => {
     expect(maskKey("AIzaSyD-1234")).toBe("••••••1234");
@@ -21,6 +26,42 @@ describe("ai key helpers", () => {
     expect(promoteKey(["a", "b", "c"], 2)).toEqual(["c", "a", "b"]);
     expect(promoteKey(["a", "b"], 0)).toEqual(["a", "b"]);
     expect(promoteKey(["a"], 5)).toEqual(["a"]);
+  });
+
+  it("preserves upstream status on mapped errors so key rotation can continue", () => {
+    expect(statusOf(mapHttpError(429, "quota"))).toBe(429);
+    expect(statusOf(mapHttpError(401, "unauthorized"))).toBe(401);
+    expect(statusOf(mapHttpError(503, "unavailable"))).toBe(503);
+  });
+
+  it("tries the next key after an upstream quota response", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(new Response("quota", { status: 429 }))
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ choices: [{ message: { content: "ok" } }] }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }),
+        ),
+    );
+
+    const result = await askWithKeys(
+      "openai",
+      ["key-one", "key-two"],
+      "",
+      "model",
+      "system",
+      "prompt",
+    );
+
+    expect(result).toEqual({ text: "ok", keyIndex: 1 });
+    const requests = vi.mocked(fetch).mock.calls;
+    expect(requests).toHaveLength(2);
+    expect(new Headers(requests[0]?.[1]?.headers).get("Authorization")).toBe("Bearer key-one");
+    expect(new Headers(requests[1]?.[1]?.headers).get("Authorization")).toBe("Bearer key-two");
   });
 });
 
