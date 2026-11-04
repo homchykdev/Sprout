@@ -3,6 +3,9 @@ import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { TapButton } from "@/components/game/TapButton";
+import { buildChatFile, chatFileName, countChatRecords, parseChatFile } from "@/lib/chat/backup";
+import { useChat } from "@/lib/chat/store";
+import type { ChatBackup } from "@/lib/chat/types";
 import {
   applyBackup,
   buildSingleFile,
@@ -201,6 +204,7 @@ export function DataGroup() {
       hint="Все данные хранятся на устройстве. Делай резервную копию, чтобы перенести прогресс."
     >
       <DataSection />
+      <ChatDataCard />
       <button
         className="text-sm font-semibold text-destructive"
         onClick={() => confirm("Удалить все данные безвозвратно?") && resetAll()}
@@ -208,5 +212,103 @@ export function DataGroup() {
         Сбросить всё
       </button>
     </SectionCard>
+  );
+}
+
+/** Chats are a separate persist store, so they get their own backup card. */
+function ChatDataCard() {
+  const [incoming, setIncoming] = useState<ChatBackup | null>(null);
+  const file = useRef<HTMLInputElement>(null);
+  const sessions = useChat((s) => s.sessions.length);
+
+  const doExport = () => {
+    const blob = new Blob([JSON.stringify(buildChatFile(), null, 2)], {
+      type: "application/json",
+    });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = chatFileName();
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+    toast.success(`Файл ${a.download} сохранён`);
+  };
+
+  const onFile = async (f: File | undefined) => {
+    if (!f) return;
+    try {
+      setIncoming(parseChatFile(await f.text()));
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  };
+
+  return (
+    <div className="rounded-2xl border-2 p-3">
+      <div className="flex items-center gap-3">
+        <span className="text-2xl" aria-hidden>
+          💬
+        </span>
+        <span className="flex-1">
+          <span className="block text-sm font-semibold">Чаты с ИИ и память</span>
+          <span className="block text-xs text-muted-foreground tabular">
+            чатов в истории: {sessions} · {chatFileName("ГГГГ-ММ-ДД")}
+          </span>
+        </span>
+      </div>
+      <div className="mt-2.5 flex gap-2">
+        <TapButton size="sm" className="min-h-[44px] flex-1" onClick={doExport}>
+          <Download className="h-4 w-4" /> Скачать
+        </TapButton>
+        <TapButton
+          variant="soft"
+          size="sm"
+          className="min-h-[44px] flex-1"
+          onClick={() => {
+            if (file.current) file.current.value = "";
+            file.current?.click();
+          }}
+        >
+          <Upload className="h-4 w-4" /> Загрузить
+        </TapButton>
+      </div>
+      <input
+        ref={file}
+        type="file"
+        accept="application/json,.json"
+        hidden
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          e.target.value = "";
+          void onFile(f);
+        }}
+      />
+      <Dialog open={!!incoming} onOpenChange={(o) => !o && setIncoming(null)}>
+        <DialogContent className="max-h-[85dvh] overflow-y-auto rounded-3xl">
+          <DialogHeader>
+            <DialogTitle>Загрузить чаты из файла?</DialogTitle>
+          </DialogHeader>
+          {incoming && (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                💬 Найдено{" "}
+                <b className="tabular text-foreground">{incoming.data.sessions.length}</b> чатов и{" "}
+                <b className="tabular text-foreground">{incoming.data.memory.length}</b> фактов
+                памяти. Текущая история чатов будет заменена целиком.
+              </p>
+              <TapButton
+                className="w-full"
+                onClick={() => {
+                  useChat.getState().importBackup(incoming);
+                  setIncoming(null);
+                  toast.success("Чаты загружены");
+                }}
+              >
+                Загрузить
+              </TapButton>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }

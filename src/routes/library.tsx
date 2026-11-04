@@ -1,5 +1,5 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { Globe, Plus, Search, Sparkles, Trash2, Youtube } from "lucide-react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { Globe, MessageCircle, Plus, Search, Trash2, Youtube } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -8,7 +8,6 @@ import { ArticleImportTab } from "@/components/game/ArticleImportTab";
 import { blankExercise, ExerciseEditor } from "@/components/game/ExerciseEditor";
 import { TapButton } from "@/components/game/TapButton";
 import { ExerciseThumb } from "@/components/game/ExerciseThumb";
-import { aiCreateExercise } from "@/lib/clients";
 import { useApp } from "@/lib/store";
 import { CATEGORIES, MUSCLES, type Category, type Exercise } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -41,15 +40,13 @@ function Library() {
 }
 
 export function LibraryContent() {
-  const { exercises, deleteExercise, ai } = useApp();
+  const { exercises, deleteExercise } = useApp();
+  const navigate = useNavigate();
   const [q, setQ] = useState("");
   const [cat, setCat] = useState<Category | "all">("all");
   const [edit, setEdit] = useState<Exercise | null>(null);
-  const [aiOpen, setAiOpen] = useState(false);
   const [ytOpen, setYtOpen] = useState(false);
   const [artOpen, setArtOpen] = useState(false);
-  const needsKeys = (open: () => void) => () =>
-    ai.keys.length ? open() : toast("Добавьте ИИ-ключ в Настройках");
 
   const list = useMemo(
     () =>
@@ -66,13 +63,17 @@ export function LibraryContent() {
         <TapButton size="sm" onClick={() => setEdit(blankExercise())}>
           <Plus className="h-4 w-4 shrink-0" /> Своё
         </TapButton>
-        <TapButton size="sm" variant="sky" onClick={needsKeys(() => setYtOpen(true))}>
+        <TapButton size="sm" variant="sky" onClick={() => setYtOpen(true)}>
           <Youtube className="h-4 w-4 shrink-0" /> Из YouTube
         </TapButton>
-        <TapButton size="sm" variant="flame" onClick={needsKeys(() => setAiOpen(true))}>
-          <Sparkles className="h-4 w-4 shrink-0" /> ИИ
+        <TapButton
+          size="sm"
+          variant="flame"
+          onClick={() => navigate({ to: "/chat", search: { seed: "exercise" } })}
+        >
+          <MessageCircle className="h-4 w-4 shrink-0" /> ИИ
         </TapButton>
-        <TapButton size="sm" variant="soft" onClick={needsKeys(() => setArtOpen(true))}>
+        <TapButton size="sm" variant="soft" onClick={() => setArtOpen(true)}>
           <Globe className="h-4 w-4 shrink-0" /> Из статьи
         </TapButton>
       </div>
@@ -148,14 +149,6 @@ export function LibraryContent() {
         )}
       </div>
       <ExerciseEditor value={edit} onClose={() => setEdit(null)} />
-      <AiDialog
-        open={aiOpen}
-        onClose={() => setAiOpen(false)}
-        onDone={(e) => {
-          setAiOpen(false);
-          setEdit(e);
-        }}
-      />
       <AiYoutubeDialog open={ytOpen} onClose={() => setYtOpen(false)} />
       <ArticleDialog open={artOpen} onClose={() => setArtOpen(false)} />
     </div>
@@ -175,27 +168,6 @@ function ArticleDialog({ open, onClose }: { open: boolean; onClose: () => void }
   );
 }
 
-function AiDialog({
-  open,
-  onClose,
-  onDone,
-}: {
-  open: boolean;
-  onClose: () => void;
-  onDone: (e: Exercise) => void;
-}) {
-  return (
-    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-h-[85dvh] overflow-y-auto rounded-3xl">
-        <DialogHeader>
-          <DialogTitle>Создать упражнение с ИИ</DialogTitle>
-        </DialogHeader>
-        <AiTextTab onDone={onDone} />
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 function AiYoutubeDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
@@ -206,37 +178,5 @@ function AiYoutubeDialog({ open, onClose }: { open: boolean; onClose: () => void
         <AiYoutubeTab onClose={onClose} />
       </DialogContent>
     </Dialog>
-  );
-}
-
-function AiTextTab({ onDone }: { onDone: (e: Exercise) => void }) {
-  const [q, setQ] = useState("");
-  const [busy, setBusy] = useState(false);
-  return (
-    <div className="space-y-3">
-      <textarea
-        rows={3}
-        className="w-full rounded-2xl border-2 p-4 outline-none focus:border-primary"
-        placeholder="напр. упражнение на осанку с резинкой"
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-      />
-      <TapButton
-        variant="flame"
-        disabled={busy || q.length < 3}
-        onClick={async () => {
-          setBusy(true);
-          try {
-            onDone(await aiCreateExercise(q));
-          } catch (e) {
-            toast.error((e as Error).message);
-          } finally {
-            setBusy(false);
-          }
-        }}
-      >
-        <Sparkles className="h-4 w-4" /> {busy ? "Создаю…" : "Создать"}
-      </TapButton>
-    </div>
   );
 }

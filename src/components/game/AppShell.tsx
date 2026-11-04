@@ -1,5 +1,5 @@
 import { Link, useLocation } from "@tanstack/react-router";
-import { Camera, Home, LayoutList, Settings, User } from "lucide-react";
+import { Camera, Home, LayoutList, MessageCircle, Settings, User } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { level } from "@/lib/game";
 import { planProgress } from "@/lib/plan";
@@ -70,6 +70,14 @@ function Chrome({ children, pathname }: { children: ReactNode; pathname: string 
         </div>
         <div className="flex shrink-0 items-center gap-1">
           <VacationButton />
+          <Link
+            to="/chat"
+            search={{ seed: undefined }}
+            aria-label="Чат с ИИ"
+            className="press flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground hover:bg-muted"
+          >
+            <MessageCircle className="h-5 w-5" />
+          </Link>
           <Link
             to="/settings"
             aria-label="Настройки"

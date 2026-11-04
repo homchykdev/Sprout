@@ -14,9 +14,7 @@ export function buildAppSummary(s: {
   const lv = level(s.xp);
   const lines: string[] = [];
   lines.push(`Пользователь: ${s.name || "имя не указано"}.`);
-  lines.push(
-    `Уровень ${lv.lvl}, опыт ${s.xp} XP (${lv.into}/${lv.need} до следующего).`,
-  );
+  lines.push(`Уровень ${lv.lvl}, опыт ${s.xp} XP (${lv.into}/${lv.need} до следующего).`);
 
   // Streak days: count consecutive past days that had either a session or the plan promise.
   lines.push(`Упражнений в библиотеке: ${s.exercises.length}.`);
@@ -49,7 +47,9 @@ export function buildAppSummary(s: {
         return `${ex?.name ?? "?"}×${i.sets}${i.bpm ? ` ${i.bpm}bpm` : ""}`;
       })
       .join(", ");
-    lines.push(`- ${w.emoji} ${w.name}: ${items}${w.items.length > 8 ? ", …" : ""}${w.feedback ? ` (оценка: ${[w.feedback.difficulty ? `сложность ${w.feedback.difficulty}/10` : "", w.feedback.verdict ?? ""].filter(Boolean).join(", ")})` : ""}`);
+    lines.push(
+      `- ${w.emoji} ${w.name}: ${items}${w.items.length > 8 ? ", …" : ""}${w.feedback ? ` (оценка: ${[w.feedback.difficulty ? `сложность ${w.feedback.difficulty}/10` : "", w.feedback.verdict ?? ""].filter(Boolean).join(", ")})` : ""}`,
+    );
   }
 
   lines.push(`Цикл плана: ${s.plan.steps.length} шагов.`);
@@ -65,7 +65,11 @@ export function buildAppSummary(s: {
 
 const ACTION_KEYS = ["create_exercise", "update_exercise", "create_workout", "add_plan_step"];
 
-export function buildSystemPrompt(summary: string, memory: string[], permissions: ChatPermissions): string {
+export function buildSystemPrompt(
+  summary: string,
+  memory: string[],
+  permissions: ChatPermissions,
+): string {
   const perms = (Object.keys(DOMAIN_LABELS) as (keyof ChatPermissions)[])
     .map((d) => `${DOMAIN_LABELS[d]}: ${permissions[d]}`)
     .join("; ");
@@ -84,10 +88,10 @@ export function buildSystemPrompt(summary: string, memory: string[], permissions
     "",
     "КОНТРАКТ ОТВЕТА — строго один валидный JSON без markdown-обёрток:",
     '{"reply": string, "actions"?: [{"kind": string, "data": string}], "memory"?: {"learn": string[], "forget": string[]}}',
-    '- reply — твой ответ пользователю (без служебного мусора).',
+    "- reply — твой ответ пользователю (без служебного мусора).",
     `- actions — НЕобязательный список предложений изменений. Доступные kind: ${ACTION_KEYS.join(", ")}. Сейчас действуют только эти: ${kinds.length ? kinds.join(", ") : "НИКАКИЕ — предложения изменений запрещены настройками"}.`,
-    '- data — JSON-строка (JSON.stringify) с полным объектом изменения (см. схемы ниже). Не присылай actions, если пользователь просто спрашивает.',
-    '- memory — НЕобязательно: learn — новые устойчивые факты о пользователе (короткие фразы, максимум по делу), forget — факты, которые пользователь просил забыть (дословно из списка ниже).',
+    "- data — JSON-строка (JSON.stringify) с полным объектом изменения (см. схемы ниже). Не присылай actions, если пользователь просто спрашивает.",
+    "- memory — НЕобязательно: learn — новые устойчивые факты о пользователе (короткие фразы, максимум по делу), forget — факты, которые пользователь просил забыть (дословно из списка ниже).",
     "",
     "СХЕМЫ actions:",
     '- create_exercise: {"name", "muscles" (ключи из списка ниже), "category" ("strength"|"cardio"|"stretch"), "mode" ("reps"|"time"), "reps", "seconds", "equipment", "description", "steps" (string[]), "mistakes" (string[]), "emoji" (1 эмодзи)}',
@@ -101,7 +105,7 @@ export function buildSystemPrompt(summary: string, memory: string[], permissions
     "ЖЁСТКИЕ ОГРАНИЧЕНИЯ:",
     "- Никогда не изменяй настройки приложения, API-ключи и доступы сам. Можешь посоветовать, как их настроить в Настройках.",
     "- Не выдумывай exerciseId/workoutId — используй только существующие (см. данные).",
-    '- Не предлагай удаление чего-либо (в actions его нет); если просят удалить — объясни, как сделать это вручную в соответствующем разделе.',
+    "- Не предлагай удаление чего-либо (в actions его нет); если просят удалить — объясни, как сделать это вручную в соответствующем разделе.",
     "- Вопросы про безопасность здоровья/травмы — рекомендуй врача, не ставь диагнозы.",
     "- Если данных не хватает — задай уточняющий вопрос вместо действия.",
     "",

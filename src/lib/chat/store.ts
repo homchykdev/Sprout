@@ -79,9 +79,11 @@ export const useChat = create<ChatState & ChatActions>()(
             c.id === sessionId
               ? {
                   ...c,
-                  // Auto-title from the first user message.
+                  // Auto-title only replaces the placeholder, never a real name.
                   title:
-                    c.messages.length === 0 && m.role === "user"
+                    c.messages.length === 0 &&
+                    m.role === "user" &&
+                    (c.title === "Новый чат" || !c.title.trim())
                       ? m.text.trim().slice(0, 60) || c.title
                       : c.title,
                   messages: [...c.messages, m],
@@ -141,8 +143,7 @@ export const useChat = create<ChatState & ChatActions>()(
 
       setPermissions: (p) => set({ permissions: p }),
 
-      remember: (learn, forget) =>
-        set((s) => ({ memory: mergeFacts(s.memory, learn, forget) })),
+      remember: (learn, forget) => set((s) => ({ memory: mergeFacts(s.memory, learn, forget) })),
 
       setMemory: (facts) => set({ memory: mergeFacts([], facts, []) }),
 

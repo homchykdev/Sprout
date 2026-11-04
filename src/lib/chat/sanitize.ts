@@ -95,7 +95,9 @@ function sanitizeWorkout(
         reps: Math.min(100, Math.max(1, Math.round(num(it.reps, 12)))),
         seconds: Math.min(1200, Math.max(5, Math.round(num(it.seconds, 40)))),
         rest: Math.min(300, Math.max(5, Math.round(num(it.rest, 60)))),
-        ...(Number.isFinite(bpmNum) ? { bpm: Math.min(200, Math.max(40, Math.round(bpmNum))) } : {}),
+        ...(Number.isFinite(bpmNum)
+          ? { bpm: Math.min(200, Math.max(40, Math.round(bpmNum))) }
+          : {}),
       };
     })
     .filter((it): it is NonNullable<typeof it> => it !== null);
@@ -168,7 +170,7 @@ export function parseActions(
         kind === "update_exercise"
           ? ctx.exercises.find((e) => e.id === str(a.id, "", 60))
           : undefined;
-      if (!base) continue;
+      if (kind === "update_exercise" && !base) continue;
       const ex = sanitizeExerciseLike(a, base);
       if (!ex) continue;
       out.push({

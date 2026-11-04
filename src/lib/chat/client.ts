@@ -25,10 +25,16 @@ export async function sendChat(
 
   const chat = useChat.getState();
   // Stored history goes as text only: models read attachments on arrival, and
-  // resending old base64 would balloon every later request. The assistant sees
-  // `[вложение: имя]` markers kept in the stored text.
+  // resending old base64 would balloon every later request. A `[вложение]` marker
+  // keeps the context of what the user showed earlier.
   const messages: ChatMessageInput[] = [
-    ...historyWindow(sessionMessages).map((m) => ({ role: m.role, text: m.text })),
+    ...historyWindow(sessionMessages).map((m) => ({
+      role: m.role,
+      text:
+        m.attachments?.length && m.role === "user"
+          ? `${m.text}\n[вложение: ${m.attachments.map((a) => a.name).join(", ")}]`
+          : m.text,
+    })),
     {
       role: "user" as const,
       text: userTurn.text,
