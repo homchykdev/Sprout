@@ -9,6 +9,20 @@ let nativeVoices: ReturnType<typeof TextToSpeech.getSupportedVoices> | undefined
 let nativeSpeechRequests = 0;
 let nativeSpeechGeneration = 0;
 
+/**
+ * Web Speech keeps only weak references to utterances — an utterance without a
+ * stored reference can be garbage-collected mid-speech, silently dropping the
+ * audio, so we retain them until their own `onend`/`onerror` fires.
+ */
+const webUtterances = new Set<SpeechSynthesisUtterance>();
+/**
+ * Calling `cancel()` and `speak()` in the same tick wedges Chrome/Android's
+ * engine after a few repeats (queue stuck "speaking", no audio). The tiny delay
+ * between the two lets the engine settle, and `resume()` clears the paused
+ * state `cancel()` can leave behind.
+ */
+const SPEAK_AFTER_CANCEL_MS = 40;
+
 export async function listVoices(): Promise<SpeechSynthesisVoice[]> {
   if (Capacitor.isNativePlatform()) {
     try {
@@ -75,14 +89,37 @@ export function speak(text: string, opts: { interrupt?: boolean } = {}) {
     return;
   }
   if (typeof speechSynthesis === "undefined") return;
-  if (opts.interrupt) speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance(text);
-  u.lang = "ru-RU";
-  u.rate = v.rate;
-  const voices = speechSynthesis.getVoices().filter((x) => x.lang.toLowerCase().startsWith("ru"));
-  const voice = speechSynthesis.getVoices().find((x) => x.voiceURI === v.voiceURI) ?? voices[0];
-  if (voice) u.voice = voice;
-  speechSynthesis.speak(u);
+  const start = () => {
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = "ru-RU";
+    u.rate = v.rate;
+    const voices = speechSynthesis.getVoices().filter((x) => x.lang.toLowerCase().startsWith("ru"));
+    const voice = speechSynthesis.getVoices().find((x) => x.voiceURI === v.voiceURI) ?? voices[0];
+    if (voice) u.voice = voice;
+    webUtterances.add(u);
+    u.onend = () => webUtterances.delete(u);
+    u.onerror = () => {
+      webUtterances.delete(u);
+      // Engine failures are otherwise invisible; nudge it out of a wedged state.
+      try {
+        speechSynthesis.resume();
+      } catch {
+        /* noop */
+      }
+    };
+    speechSynthesis.speak(u);
+  };
+  if (opts.interrupt) {
+    speechSynthesis.cancel();
+    try {
+      speechSynthesis.resume();
+    } catch {
+      /* noop */
+    }
+    setTimeout(start, SPEAK_AFTER_CANCEL_MS);
+  } else {
+    start();
+  }
 }
 
 export function stopSpeech() {

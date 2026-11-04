@@ -128,7 +128,9 @@ export function CameraStage({ frame, step, total, ghost, onCaptured, onSkip, onE
     let stillSince = 0;
     let lastMotion = 0;
     let lastMsg = "";
-    const guidance = createVoiceGuidance((prompt) => speak(prompt, { interrupt: true }));
+    const guidance = createVoiceGuidance((prompt) => speak(prompt, { interrupt: true }), {
+      repeatMs: 2_500,
+    });
     guidanceRef.current = guidance;
     setModel("loading");
     setError(null);
@@ -234,7 +236,9 @@ export function CameraStage({ frame, step, total, ghost, onCaptured, onSkip, onE
 
     const start = async () => {
       if (!navigator.mediaDevices?.getUserMedia) {
-        setError("Браузер не поддерживает камеру. Загрузи фото файлом.");
+        const msg = "Браузер не поддерживает камеру. Загрузи фото файлом.";
+        say(msg, "warn");
+        setError(msg);
         return;
       }
       const modelPromise = loadPoseLandmarker()
@@ -296,7 +300,11 @@ export function CameraStage({ frame, step, total, ghost, onCaptured, onSkip, onE
       } catch (e) {
         if (!cancelled) {
           console.error("Could not start camera capture.", e);
-          setError(cameraError(e));
+          const msg = cameraError(e);
+          // Re-prime speech after a camera restart (orientation change, app resume):
+          // without a prompt the fresh guidance instance would stay silent forever.
+          say(msg, "warn");
+          setError(msg);
         }
         return;
       }
