@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { UrlRetrievalStatus } from "@google/genai";
+import { formatChatKeyFailures } from "../chat.functions";
 import { buildChatFile, countChatRecords, parseChatFile } from "../chat/backup";
 import { mergeFacts } from "../chat/memory";
 import { extractGroundedSources } from "../chat/grounding";
@@ -216,6 +217,42 @@ describe("chat grounding sources", () => {
       },
     });
     expect(sources).toEqual([{ title: "Article", url: "https://example.com/article" }]);
+  });
+});
+
+describe("chat key error diagnostics", () => {
+  it("reports the provider and attempted key numbers without revealing secrets", () => {
+    const error = formatChatKeyFailures(
+      "openai",
+      "https://api.example.test/v1",
+      ["secret-key-one", "secret-key-two"],
+      [
+        {
+          keyIndex: 0,
+          key: "secret-key-one",
+          error: Object.assign(new Error("quota"), { status: 429 }),
+        },
+        { keyIndex: 1, key: "secret-key-two", error: new Error("authentication failed") },
+      ],
+    );
+
+    expect(error.message).toContain("Источник: OpenAI-compatible (api.example.test)");
+    expect(error.message).toContain("ключ 1/2 (••••-one): quota");
+    expect(error.message).toContain("ключ 2/2 (••••-two): authentication failed");
+    expect(error.message).not.toContain("secret-key");
+  });
+
+  it("identifies Gemini as the source for non-HTTP errors", () => {
+    const error = formatChatKeyFailures(
+      "gemini",
+      undefined,
+      ["gemini-secret"],
+      [{ keyIndex: 0, key: "gemini-secret", error: new Error("request failed") }],
+    );
+
+    expect(error.message).toContain("Источник: Google Gemini");
+    expect(error.message).toContain("ключ 1/1");
+    expect(error.message).not.toContain("gemini-secret");
   });
 });
 

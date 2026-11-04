@@ -52,6 +52,41 @@ const AssistantPayload = z.object({
 
 export type ChatPayload = z.infer<typeof AssistantPayload> & { sources?: ChatSource[] };
 
+interface ChatKeyFailure {
+  keyIndex: number;
+  key: string;
+  error: unknown;
+}
+
+/** Builds a diagnostic that identifies the provider and attempted keys without exposing them. */
+export function formatChatKeyFailures(
+  provider: "gemini" | "openai",
+  baseUrl: string | undefined,
+  keys: string[],
+  failures: ChatKeyFailure[],
+): Error {
+  let source = "Google Gemini";
+  if (provider === "openai") {
+    try {
+      source = `OpenAI-compatible (${new URL(baseUrl || "https://api.openai.com/v1").host})`;
+    } catch {
+      source = "OpenAI-compatible";
+    }
+  }
+
+  const details = failures.map(({ keyIndex, key, error }) => {
+    const keyLabel = `ключ ${keyIndex + 1}/${keys.length}${key.length > 4 ? ` (••••${key.slice(-4)})` : ""}`;
+    const message = error instanceof Error ? error.message : "Неизвестная ошибка";
+    const safeMessage = keys.reduce(
+      (text, secret) => text.replaceAll(secret, "[ключ скрыт]"),
+      message,
+    );
+    return `${keyLabel}: ${safeMessage.slice(0, 240)}`;
+  });
+
+  return new Error(`Источник: ${source}. Запрос не выполнен:\n${details.join("\n")}`);
+}
+
 /** Parses the model's text into the structured chat payload or raises a clean error. */
 function toPayload(content: unknown): ChatPayload {
   const text = normalizeAiContent(content).trim();
@@ -150,6 +185,7 @@ export const askChat = createServerFn({ method: "POST" })
   .validator((d) => Input.parse(d))
   .handler(async ({ data }) => {
     let last: unknown = null;
+    const failures: ChatKeyFailure[] = [];
     for (let i = 0; i < data.keys.length; i++) {
       try {
         const payload = await callChatOnce(
@@ -162,9 +198,18 @@ export const askChat = createServerFn({ method: "POST" })
         );
         return { payload, keyIndex: i };
       } catch (e) {
-        if (statusOf(e) == null) throw e;
+        if (statusOf(e) == null) {
+          throw formatChatKeyFailures(data.provider, data.baseUrl, data.keys, [
+            { keyIndex: i, key: data.keys[i]!, error: e },
+          ]);
+        }
+        failures.push({ keyIndex: i, key: data.keys[i]!, error: e });
         last = e;
       }
     }
-    throw last instanceof Error ? last : new Error("Лимиты исчерпаны на всех ключах.");
+    if (failures.length)
+      throw formatChatKeyFailures(data.provider, data.baseUrl, data.keys, failures);
+    throw last instanceof Error
+      ? last
+      : new Error("Запрос не выполнен: не осталось ключей для проверки.");
   });
