@@ -500,7 +500,7 @@ function Summary({
     },
   ];
   return (
-    <div className="relative mx-auto flex min-h-screen max-w-xl flex-col items-center overflow-hidden px-5 pb-8 pt-16 text-center">
+    <div className="relative mx-auto flex min-h-[100dvh] max-w-xl flex-col items-center overflow-hidden px-5 pb-[calc(2rem+env(safe-area-inset-bottom))] pt-[max(1.5rem,env(safe-area-inset-top))] text-center">
       <ConfettiOverlay count={40} />
       <Mascot mood="fire" size={150} className="animate-pop" />
       <h1 className="animate-rise mt-6 text-3xl font-extrabold tracking-tight text-gold-shade">

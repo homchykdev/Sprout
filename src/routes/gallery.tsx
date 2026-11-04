@@ -826,7 +826,7 @@ function LinkDialog({
   const field = "w-full rounded-2xl border-2 px-4 outline-none focus:border-primary";
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-h-[92vh] overflow-y-auto rounded-3xl">
+      <DialogContent className="max-h-[92dvh] overflow-y-auto rounded-3xl">
         <DialogTitle>Добавить по ссылке</DialogTitle>
         <input
           className={cn(field, "h-12")}

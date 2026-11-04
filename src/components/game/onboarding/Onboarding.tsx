@@ -126,7 +126,7 @@ export function Onboarding() {
       </footer>
 
       <Dialog open={confirmExit} onOpenChange={setConfirmExit}>
-        <DialogContent className="max-h-[85vh] overflow-y-auto rounded-3xl">
+        <DialogContent className="max-h-[85dvh] overflow-y-auto rounded-3xl">
           <DialogHeader>
             <DialogTitle>Выйти из настройки?</DialogTitle>
             <DialogDescription>

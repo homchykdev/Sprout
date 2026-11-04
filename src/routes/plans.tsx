@@ -317,7 +317,7 @@ function WorkoutEditor({ value, onClose }: { value: Workout | null; onClose: () 
 
   return (
     <Dialog open={!!value} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto rounded-3xl sm:max-w-lg">
+      <DialogContent className="max-h-[90dvh] overflow-y-auto rounded-3xl sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{value.name ? "Тренировка" : "Новая тренировка"}</DialogTitle>
         </DialogHeader>

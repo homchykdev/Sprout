@@ -175,11 +175,9 @@
 @keyframes rise {
   0% {
     opacity: 0;
-    transform: translateY(14px);
   }
   100% {
     opacity: 1;
-    transform: translateY(0);
   }
 }
 @keyframes float {
@@ -273,6 +271,17 @@
   [data-state="open"].animate-accordion-down,
   [data-state="closed"].animate-accordion-up {
     animation: none;
+  }
+  /* Route/page transitions become instant; infinite decorations stop. */
+  .animate-rise,
+  .animate-pop {
+    animation-duration: 1ms;
+  }
+  .animate-float,
+  .animate-wiggle,
+  .animate-flicker,
+  .animate-pulse-ring {
+    animation-play-state: paused;
   }
 }
 @utility animate-float {

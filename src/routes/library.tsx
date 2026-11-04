@@ -62,18 +62,18 @@ export function LibraryContent() {
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <TapButton size="sm" onClick={() => setEdit(blankExercise())}>
-          <Plus className="h-4 w-4" /> Своё
+          <Plus className="h-4 w-4 shrink-0" /> Своё
         </TapButton>
         <TapButton size="sm" variant="sky" onClick={needsKeys(() => setYtOpen(true))}>
-          <Youtube className="h-4 w-4" /> Из YouTube
+          <Youtube className="h-4 w-4 shrink-0" /> Из YouTube
         </TapButton>
         <TapButton size="sm" variant="flame" onClick={needsKeys(() => setAiOpen(true))}>
-          <Sparkles className="h-4 w-4" /> ИИ
+          <Sparkles className="h-4 w-4 shrink-0" /> ИИ
         </TapButton>
         <TapButton size="sm" variant="soft" onClick={needsKeys(() => setArtOpen(true))}>
-          <Globe className="h-4 w-4" /> Из статьи
+          <Globe className="h-4 w-4 shrink-0" /> Из статьи
         </TapButton>
       </div>
       <label className="flex items-center gap-2 rounded-2xl border-2 bg-card px-4">
@@ -165,7 +165,7 @@ export function LibraryContent() {
 function ArticleDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto rounded-3xl">
+      <DialogContent className="max-h-[85dvh] overflow-y-auto rounded-3xl">
         <DialogHeader>
           <DialogTitle>Импорт упражнений из статьи</DialogTitle>
         </DialogHeader>
@@ -186,7 +186,7 @@ function AiDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto rounded-3xl">
+      <DialogContent className="max-h-[85dvh] overflow-y-auto rounded-3xl">
         <DialogHeader>
           <DialogTitle>Создать упражнение с ИИ</DialogTitle>
         </DialogHeader>
@@ -199,7 +199,7 @@ function AiDialog({
 function AiYoutubeDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto rounded-3xl">
+      <DialogContent className="max-h-[85dvh] overflow-y-auto rounded-3xl">
         <DialogHeader>
           <DialogTitle>Разобрать YouTube-видео</DialogTitle>
         </DialogHeader>

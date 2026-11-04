@@ -47,7 +47,7 @@ export function PhotoCompareDialog({
   const [a, b] = items;
   return (
     <Dialog open={items.length === 2} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-h-[92vh] overflow-y-auto rounded-3xl">
+      <DialogContent className="max-h-[92dvh] overflow-y-auto rounded-3xl">
         <DialogTitle>Сравнение</DialogTitle>
         {a && b && (
           <div className="grid grid-cols-2 gap-2">

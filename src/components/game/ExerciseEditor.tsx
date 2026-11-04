@@ -53,19 +53,20 @@ export function ExerciseEditor({
 
   return (
     <Dialog open={!!value} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto rounded-3xl sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>{ex.name || "Новое упражнение"}</DialogTitle>
+      <DialogContent className="max-h-[92dvh] w-full gap-0 overflow-y-auto rounded-3xl p-0 sm:max-w-lg">
+        <DialogHeader className="glass sticky top-0 z-10 border-b px-6 pb-3 pt-5">
+          <DialogTitle className="truncate">{ex.name || "Новое упражнение"}</DialogTitle>
         </DialogHeader>
-        <div className="space-y-4">
+        <div className="space-y-4 px-6 pb-4 pt-4">
           <div className="flex gap-2">
             <input
-              className={cn(field, "w-16 text-center")}
+              className={cn(field, "w-14 shrink-0 text-center")}
+              aria-label="Эмодзи упражнения"
               value={ex.emoji ?? ""}
               onChange={(e) => up({ emoji: e.target.value })}
             />
             <input
-              className={field}
+              className={cn(field, "min-w-0 flex-1")}
               placeholder="Название"
               value={ex.name}
               onChange={(e) => up({ name: e.target.value })}
@@ -137,7 +138,7 @@ export function ExerciseEditor({
                 type="number"
                 min={0}
                 max={200}
-                className={field}
+                className={cn(field, "min-w-0 flex-1")}
                 placeholder="напр. 60"
                 value={ex.bpm ?? ""}
                 onChange={(e) =>
@@ -148,8 +149,9 @@ export function ExerciseEditor({
                 <button
                   key={b}
                   onClick={() => up({ bpm: b })}
+                  aria-label={`Темп ${b} уд/мин`}
                   className={cn(
-                    "press rounded-2xl border-2 px-3 text-sm font-semibold",
+                    "press shrink-0 rounded-2xl border-2 px-3 text-sm font-semibold",
                     ex.bpm === b && "border-primary bg-primary-soft text-primary-shade",
                   )}
                 >
@@ -256,7 +258,7 @@ export function ExerciseEditor({
               onVerdict={(v) => up({ feedback: cleanFeedback(ex.feedback, { verdict: v }) })}
             />
           </div>
-          <div className="flex gap-2">
+          <div className="sticky bottom-0 z-10 -mx-6 flex gap-2 border-t bg-background px-6 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 [background:color-mix(in_oklab,var(--background)_92%,transparent)] backdrop-blur">
             {hasAi && (
               <TapButton
                 variant="soft"
@@ -273,11 +275,11 @@ export function ExerciseEditor({
                   }
                 }}
               >
-                <Sparkles className="h-4 w-4" /> {busy ? "Думаю…" : "Улучшить ИИ"}
+                <Sparkles className="h-4 w-4 shrink-0" /> {busy ? "Думаю…" : "Улучшить ИИ"}
               </TapButton>
             )}
             <TapButton
-              className="flex-1"
+              className="min-w-0 flex-1 whitespace-nowrap"
               disabled={!ex.name || !ex.muscles.length}
               onClick={() => {
                 upsert({

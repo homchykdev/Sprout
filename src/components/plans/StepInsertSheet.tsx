@@ -82,7 +82,7 @@ export function StepInsertSheet({
               </button>
             ))}
           </div>
-          <div className="mt-2 max-h-[45vh] min-h-20 space-y-1 overflow-y-auto">
+          <div className="mt-2 max-h-[45dvh] min-h-20 space-y-1 overflow-y-auto">
             {found.map((w) => (
               <button
                 key={w.id}

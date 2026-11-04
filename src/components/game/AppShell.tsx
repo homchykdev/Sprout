@@ -54,20 +54,21 @@ function Chrome({ children, pathname }: { children: ReactNode; pathname: string 
   const lv = level(s.xp);
   return (
     <div className="mx-auto min-h-screen max-w-xl">
-      <header className="glass sticky top-[env(safe-area-inset-top)] z-30 flex items-center justify-between px-5 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
-        <div className="flex items-center gap-2">
-          <span className="flex items-center gap-1.5 rounded-full bg-flame-soft px-3 py-1.5 text-sm font-bold text-flame-shade tabular">
+      <header className="glass sticky top-0 z-30 flex items-center justify-between gap-2 px-5 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-flame-soft px-2.5 py-1.5 text-sm font-bold text-flame-shade tabular">
             <span className={cn(st > 0 && "animate-flicker")}>🔥</span>
             {st}
           </span>
-          <span className="flex items-center gap-1.5 rounded-full bg-gold-soft px-3 py-1.5 text-sm font-bold text-gold-shade tabular">
-            ⚡ {s.xp}
+          <span className="flex min-w-0 items-center gap-1.5 rounded-full bg-gold-soft px-2.5 py-1.5 text-sm font-bold text-gold-shade tabular">
+            <span className="shrink-0">⚡</span>
+            <span className="truncate">{s.xp}</span>
           </span>
-          <span className="rounded-full bg-sky-soft px-3 py-1.5 text-sm font-bold text-sky-shade">
+          <span className="shrink-0 rounded-full bg-sky-soft px-2.5 py-1.5 text-sm font-bold text-sky-shade">
             Ур. {lv.lvl}
           </span>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex shrink-0 items-center gap-1">
           <VacationButton />
           <Link
             to="/settings"
@@ -78,7 +79,10 @@ function Chrome({ children, pathname }: { children: ReactNode; pathname: string 
           </Link>
         </div>
       </header>
-      <main key={pathname} className="animate-rise px-5 pb-32 pt-2">
+      <main
+        key={pathname}
+        className="animate-rise px-5 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-2"
+      >
         {children}
       </main>
       <nav className="glass fixed inset-x-0 bottom-0 z-30 border-t pb-[env(safe-area-inset-bottom)]">
@@ -99,7 +103,7 @@ function Chrome({ children, pathname }: { children: ReactNode; pathname: string 
                 </span>
                 <span
                   className={cn(
-                    "text-[11px] font-semibold",
+                    "max-w-24 truncate text-[11px] font-semibold",
                     active ? "text-foreground" : "text-muted-foreground",
                   )}
                 >

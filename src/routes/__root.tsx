@@ -137,7 +137,7 @@ function RootComponent() {
       <AppShell>
         <Outlet />
       </AppShell>
-      <Toaster position="top-center" />
+      <Toaster position="top-center" offset={{ top: "calc(env(safe-area-inset-top) + 0.5rem)" }} />
     </QueryClientProvider>
   );
 }

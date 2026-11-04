@@ -28,7 +28,7 @@ export function PhotoGroupDialog({ groupId, items, onClose, onView }: Props) {
   };
   return (
     <Dialog open={!!groupId} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-h-[92vh] overflow-y-auto rounded-3xl">
+      <DialogContent className="max-h-[92dvh] overflow-y-auto rounded-3xl">
         <DialogTitle>Группа · {list.length} фото</DialogTitle>
         <div className="grid grid-cols-3 gap-2">
           {list.map((m) => (

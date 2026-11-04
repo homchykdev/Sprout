@@ -15,7 +15,7 @@ interface Props {
 export function PhotoEditDialog({ item, onClose }: Props) {
   return (
     <Dialog open={!!item} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-h-[92vh] overflow-y-auto rounded-3xl">
+      <DialogContent className="max-h-[92dvh] overflow-y-auto rounded-3xl">
         {item && <Body key={item.id} item={item} onClose={onClose} />}
       </DialogContent>
     </Dialog>

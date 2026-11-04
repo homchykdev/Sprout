@@ -147,7 +147,7 @@ export function DataSection() {
       )}
 
       <Dialog open={!!incoming} onOpenChange={(o) => !o && setIncoming(null)}>
-        <DialogContent className="max-h-[85vh] overflow-y-auto rounded-3xl">
+        <DialogContent className="max-h-[85dvh] overflow-y-auto rounded-3xl">
           <DialogHeader>
             <DialogTitle>Загрузить из файла?</DialogTitle>
           </DialogHeader>
