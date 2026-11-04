@@ -17,12 +17,13 @@ const Input = z.object({
 });
 
 /** Numeric HTTP status of a thrown error, if it carries one (fetch Response or SDK ApiError). */
-function statusOf(e: unknown): number | null {
+export function statusOf(e: unknown): number | null {
   const s = (e as { status?: unknown } | null)?.status;
   return typeof s === "number" ? s : null;
 }
 
-function mapHttpError(status: number, body: string): Error {
+/** Maps an upstream HTTP status to a clean Russian error for the user. */
+export function mapHttpError(status: number, body: string): Error {
   if (status === 401 || status === 403 || isBadKeyMessage(body))
     return new Error("ИИ-ключ не принят. Проверьте его в настройках.");
   if (status === 429) return new Error("Лимит запросов ИИ исчерпан. Попробуйте чуть позже.");
