@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { UrlRetrievalStatus } from "@google/genai";
-import { formatChatKeyFailures } from "../chat.functions";
+import {
+  formatChatKeyFailures,
+  parseChatPayload,
+  toGeminiContents,
+  withChatKeyFallback,
+} from "../chat.functions";
 import { buildChatFile, countChatRecords, parseChatFile } from "../chat/backup";
 import { mergeFacts } from "../chat/memory";
 import { extractGroundedSources } from "../chat/grounding";
@@ -221,6 +226,55 @@ describe("chat grounding sources", () => {
 });
 
 describe("chat key error diagnostics", () => {
+  it("parses the JSON contract when Gemini wraps it in prose or a code fence", () => {
+    expect(parseChatPayload('Ответ:\n```json\n{"reply":"Проверено"}\n```')).toEqual({
+      reply: "Проверено",
+    });
+    expect(parseChatPayload('Ответ: {"reply":"Объект { внутри строки }"}')).toEqual({
+      reply: "Объект { внутри строки }",
+    });
+  });
+
+  it("maps assistant history to Gemini's model role", () => {
+    expect(
+      toGeminiContents([
+        { role: "user", text: "Привет" },
+        { role: "assistant", text: "Здравствуйте" },
+      ]),
+    ).toEqual([
+      { role: "user", parts: [{ text: "Привет" }] },
+      { role: "model", parts: [{ text: "Здравствуйте" }] },
+    ]);
+  });
+
+  it("tries the next key after an error without an HTTP status", async () => {
+    const attempted: string[] = [];
+    const result = await withChatKeyFallback(
+      "gemini",
+      undefined,
+      ["first-key", "second-key"],
+      async (key) => {
+        attempted.push(key);
+        if (key === "first-key") throw new Error("unexpected model response");
+        return "success";
+      },
+    );
+
+    expect(attempted).toEqual(["first-key", "second-key"]);
+    expect(result).toEqual({ result: "success", keyIndex: 1 });
+  });
+
+  it("reports all attempted key errors when none succeed", async () => {
+    let attempts = 0;
+    await expect(
+      withChatKeyFallback("gemini", undefined, ["first-key", "second-key"], async () => {
+        attempts++;
+        throw new Error("request failed");
+      }),
+    ).rejects.toThrow("ключ 2/2 (••••-key): request failed");
+    expect(attempts).toBe(2);
+  });
+
   it("reports the provider and attempted key numbers without revealing secrets", () => {
     const error = formatChatKeyFailures(
       "openai",

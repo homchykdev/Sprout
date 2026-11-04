@@ -1,8 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, type Content } from "@google/genai";
 import { z } from "zod";
 import { normalizeAiContent } from "./ai-content";
-import { mapHttpError, statusOf } from "./ai.functions";
+import { mapHttpError } from "./ai.functions";
 import { extractGroundedSources } from "./chat/grounding";
 import type { ChatSource } from "./chat/types";
 
@@ -52,6 +52,18 @@ const AssistantPayload = z.object({
 
 export type ChatPayload = z.infer<typeof AssistantPayload> & { sources?: ChatSource[] };
 
+export function toGeminiContents(messages: ChatMessageInput[]): Content[] {
+  return messages.map((message) => ({
+    role: message.role === "assistant" ? "model" : "user",
+    parts: [
+      ...(message.text ? [{ text: message.text }] : []),
+      ...(message.attachments ?? []).map((attachment) => ({
+        inlineData: { mimeType: attachment.mimeType, data: attachment.base64 },
+      })),
+    ],
+  }));
+}
+
 interface ChatKeyFailure {
   keyIndex: number;
   key: string;
@@ -87,14 +99,59 @@ export function formatChatKeyFailures(
   return new Error(`Источник: ${source}. Запрос не выполнен:\n${details.join("\n")}`);
 }
 
+export async function withChatKeyFallback<T>(
+  provider: "gemini" | "openai",
+  baseUrl: string | undefined,
+  keys: string[],
+  call: (apiKey: string) => Promise<T>,
+): Promise<{ result: T; keyIndex: number }> {
+  const failures: ChatKeyFailure[] = [];
+  for (let i = 0; i < keys.length; i++) {
+    try {
+      return { result: await call(keys[i]!), keyIndex: i };
+    } catch (error) {
+      failures.push({ keyIndex: i, key: keys[i]!, error });
+    }
+  }
+  throw formatChatKeyFailures(provider, baseUrl, keys, failures);
+}
+
+function firstJsonObject(text: string): string | null {
+  const start = text.indexOf("{");
+  if (start === -1) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < text.length; i++) {
+    const char = text[i]!;
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === '"') inString = false;
+      continue;
+    }
+    if (char === '"') inString = true;
+    else if (char === "{") depth++;
+    else if (char === "}" && --depth === 0) return text.slice(start, i + 1);
+  }
+  return null;
+}
+
 /** Parses the model's text into the structured chat payload or raises a clean error. */
-function toPayload(content: unknown): ChatPayload {
+export function parseChatPayload(content: unknown): ChatPayload {
   const text = normalizeAiContent(content).trim();
   let raw: unknown;
   try {
     raw = JSON.parse(text);
   } catch {
-    throw new Error("ИИ вернул ответ не в формате чата. Повторите запрос.");
+    const json = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)?.[1] ?? firstJsonObject(text);
+    if (!json) throw new Error("ИИ вернул ответ не в формате чата. Повторите запрос.");
+    try {
+      raw = JSON.parse(json);
+    } catch {
+      throw new Error("ИИ вернул ответ не в формате чата. Повторите запрос.");
+    }
   }
   // Models occasionally nest the payload as a JSON string under a wrapper key.
   if (typeof raw === "object" && raw !== null) {
@@ -132,30 +189,18 @@ async function callChatOnce(
       apiKey,
       httpOptions: { timeout: 120_000, retryOptions: { attempts: 1 } },
     });
-    const contents = messages.map((m) => ({
-      role: m.role,
-      parts: [
-        ...(m.text ? [{ text: m.text }] : []),
-        ...(m.attachments ?? []).map((a) => ({
-          inlineData: { mimeType: a.mimeType, data: a.base64 },
-        })),
-      ],
-    }));
     const response = await ai.models.generateContent({
       model,
-      contents,
+      contents: toGeminiContents(messages),
       config: {
         systemInstruction: system,
-        responseMimeType: "application/json",
         tools: [{ googleSearch: {} }, { urlContext: {} }],
       },
     });
-    const payload = toPayload(response.text ?? "");
+    const payload = parseChatPayload(response.text ?? "");
     const sources = extractGroundedSources(response.candidates?.[0]);
     return sources.length ? { ...payload, sources } : payload;
   }
-  if (messages.some((m) => m.attachments?.length))
-    throw new Error("Вложения поддерживаются только с провайдером Gemini.");
   const base = (baseUrl || "https://api.openai.com/v1").replace(/\/$/, "");
   const res = await fetch(`${base}/chat/completions`, {
     method: "POST",
@@ -172,7 +217,7 @@ async function callChatOnce(
   const body = await res.text();
   if (!res.ok) throw mapHttpError(res.status, body);
   const j = JSON.parse(body) as { choices?: { message?: { content?: unknown } }[] };
-  return toPayload(j.choices?.[0]?.message?.content);
+  return parseChatPayload(j.choices?.[0]?.message?.content);
 }
 
 /**
@@ -184,32 +229,22 @@ async function callChatOnce(
 export const askChat = createServerFn({ method: "POST" })
   .validator((d) => Input.parse(d))
   .handler(async ({ data }) => {
-    let last: unknown = null;
-    const failures: ChatKeyFailure[] = [];
-    for (let i = 0; i < data.keys.length; i++) {
-      try {
-        const payload = await callChatOnce(
+    if (data.provider !== "gemini" && data.messages.some((m) => m.attachments?.length))
+      throw new Error("Вложения поддерживаются только с провайдером Gemini.");
+
+    const { result: payload, keyIndex } = await withChatKeyFallback(
+      data.provider,
+      data.baseUrl,
+      data.keys,
+      (key) =>
+        callChatOnce(
           data.provider,
-          data.keys[i]!,
+          key,
           data.baseUrl || undefined,
           data.model,
           data.system,
           data.messages,
-        );
-        return { payload, keyIndex: i };
-      } catch (e) {
-        if (statusOf(e) == null) {
-          throw formatChatKeyFailures(data.provider, data.baseUrl, data.keys, [
-            { keyIndex: i, key: data.keys[i]!, error: e },
-          ]);
-        }
-        failures.push({ keyIndex: i, key: data.keys[i]!, error: e });
-        last = e;
-      }
-    }
-    if (failures.length)
-      throw formatChatKeyFailures(data.provider, data.baseUrl, data.keys, failures);
-    throw last instanceof Error
-      ? last
-      : new Error("Запрос не выполнен: не осталось ключей для проверки.");
+        ),
+    );
+    return { payload, keyIndex };
   });
