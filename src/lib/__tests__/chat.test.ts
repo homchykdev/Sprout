@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { UrlRetrievalStatus } from "@google/genai";
 import { buildChatFile, countChatRecords, parseChatFile } from "../chat/backup";
 import { mergeFacts } from "../chat/memory";
+import { extractGroundedSources } from "../chat/grounding";
 import { buildAppSummary, buildSystemPrompt } from "../chat/prompt";
 import { applyAction, parseActions } from "../chat/sanitize";
 import { historyWindow, useChat } from "../chat/store";
@@ -183,6 +185,38 @@ describe("chat prompts", () => {
     const p = buildSystemPrompt("S", [], { exercises: "off", workouts: "off", plan: "off" });
     expect(p).toContain("НИКАКИЕ — предложения изменений запрещены");
   });
+
+  it("explains web tools and anti-hallucination rules for either provider mode", () => {
+    const permissions = { exercises: "ask", workouts: "ask", plan: "ask" } as const;
+    const withGrounding = buildSystemPrompt("S", [], permissions, true);
+    const withoutGrounding = buildSystemPrompt("S", [], permissions);
+    expect(withGrounding).toContain("Google Search и URL context");
+    expect(withGrounding).toContain("Не добавляй URL в поле reply");
+    expect(withoutGrounding).toContain("веб-поиск и URL context недоступны");
+    expect(withGrounding).toContain("Не отказывай автоматически");
+  });
+});
+
+describe("chat grounding sources", () => {
+  it("returns only HTTPS Google Search sources and excludes URL Context-only links", () => {
+    const sources = extractGroundedSources({
+      groundingMetadata: {
+        groundingChunks: [
+          { web: { uri: "https://example.com/article", title: "Article" } },
+          { web: { uri: "javascript:alert(1)", title: "Unsafe" } },
+        ],
+      },
+      urlContextMetadata: {
+        urlMetadata: [
+          {
+            retrievedUrl: "https://example.com/from-url-context",
+            urlRetrievalStatus: UrlRetrievalStatus.URL_RETRIEVAL_STATUS_SUCCESS,
+          },
+        ],
+      },
+    });
+    expect(sources).toEqual([{ title: "Article", url: "https://example.com/article" }]);
+  });
 });
 
 describe("chat store", () => {
@@ -228,13 +262,21 @@ describe("chat store", () => {
 
   it("backup round-trips", () => {
     const a = useChat.getState().create("Экспорт");
-    useChat.getState().addMessage(a.id, { id: "u1", role: "user", text: "Привет" });
+    useChat.getState().addMessage(a.id, {
+      id: "u1",
+      role: "assistant",
+      text: "Привет",
+      sources: [{ title: "Источник", url: "https://example.com" }],
+    });
     const file = buildChatFile();
     useChat.getState().clearAll();
 
     const parsed = parseChatFile(JSON.stringify(file));
     useChat.getState().importBackup(parsed);
     expect(useChat.getState().sessions.map((x) => x.title)).toContain("Экспорт");
+    expect(useChat.getState().sessions[0]?.messages[0]?.sources).toEqual([
+      { title: "Источник", url: "https://example.com" },
+    ]);
     expect(countChatRecords(parsed).count).toBe(1);
   });
 

@@ -44,6 +44,22 @@ export function ChatMessages({
               </p>
             ))}
           </div>
+          {m.sources?.length ? (
+            <div className="mt-2 space-y-1 px-2 text-xs">
+              <p className="font-semibold text-muted-foreground">Источники</p>
+              {m.sources.map((source) => (
+                <a
+                  key={source.url}
+                  href={source.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block min-h-11 content-center break-all text-primary underline underline-offset-2"
+                >
+                  {source.title}
+                </a>
+              ))}
+            </div>
+          ) : null}
           {m.actions?.length ? (
             <div className="mt-2 space-y-2">
               {m.actions.map((a, idx) => (

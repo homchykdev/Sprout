@@ -3,6 +3,8 @@ import { GoogleGenAI } from "@google/genai";
 import { z } from "zod";
 import { normalizeAiContent } from "./ai-content";
 import { mapHttpError, statusOf } from "./ai.functions";
+import { extractGroundedSources } from "./chat/grounding";
+import type { ChatSource } from "./chat/types";
 
 const Attachment = z.object({
   mimeType: z
@@ -48,7 +50,7 @@ const AssistantPayload = z.object({
     .optional(),
 });
 
-export type ChatPayload = z.infer<typeof AssistantPayload>;
+export type ChatPayload = z.infer<typeof AssistantPayload> & { sources?: ChatSource[] };
 
 /** Parses the model's text into the structured chat payload or raises a clean error. */
 function toPayload(content: unknown): ChatPayload {
@@ -110,9 +112,12 @@ async function callChatOnce(
       config: {
         systemInstruction: system,
         responseMimeType: "application/json",
+        tools: [{ googleSearch: {} }, { urlContext: {} }],
       },
     });
-    return toPayload(response.text ?? "");
+    const payload = toPayload(response.text ?? "");
+    const sources = extractGroundedSources(response.candidates?.[0]);
+    return sources.length ? { ...payload, sources } : payload;
   }
   if (messages.some((m) => m.attachments?.length))
     throw new Error("Вложения поддерживаются только с провайдером Gemini.");

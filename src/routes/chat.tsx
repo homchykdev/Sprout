@@ -86,7 +86,13 @@ function ChatScreen() {
         useChat.getState().permissions,
         useApp.getState(),
       );
-      const assistant: ChatMessage = { id: uid(), role: "assistant", text: payload.reply, actions };
+      const assistant: ChatMessage = {
+        id: uid(),
+        role: "assistant",
+        text: payload.reply,
+        actions,
+        sources: payload.sources,
+      };
       chat.addMessage(s.id, assistant);
       // "always"-mode actions apply silently right away.
       actions.forEach((a, i) => {
@@ -125,7 +131,8 @@ function ChatScreen() {
 
       {aiProvider !== "gemini" && (
         <p className="rounded-2xl bg-gold-soft px-4 py-3 text-xs font-semibold text-gold-shade">
-          Вложения (фото и файлы) работают только с Gemini — сейчас провайдер: другой.
+          Вложения и веб-поиск работают только с Gemini — сейчас выбран другой провайдер. Для
+          актуальных внешних фактов чат не сможет проверить источники.
         </p>
       )}
 

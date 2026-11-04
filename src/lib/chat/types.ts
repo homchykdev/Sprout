@@ -39,12 +39,18 @@ export interface ChatAttachmentRef {
   size: number;
 }
 
+export interface ChatSource {
+  title: string;
+  url: string;
+}
+
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
   text: string;
   attachments?: ChatAttachmentRef[] | undefined;
   actions?: ChatAction[] | undefined;
+  sources?: ChatSource[] | undefined;
   /** Per-action index: ISO when applied, null when dismissed, missing = undecided. */
   applied?: Record<number, string | null> | undefined;
 }

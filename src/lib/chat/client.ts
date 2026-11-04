@@ -49,6 +49,7 @@ export async function sendChat(
     buildAppSummary(useApp.getState()),
     chat.memory,
     chat.permissions,
+    ai.provider === "gemini",
   );
 
   const { payload, keyIndex } = await askChat({

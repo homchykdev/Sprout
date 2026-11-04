@@ -29,6 +29,18 @@ const BackupData = z.object({
               )
               .optional(),
             actions: z.array(z.unknown()).optional(),
+            sources: z
+              .array(
+                z.object({
+                  title: z.string().max(160),
+                  url: z
+                    .string()
+                    .url()
+                    .refine((value) => value.startsWith("https://")),
+                }),
+              )
+              .max(8)
+              .optional(),
             applied: z.record(z.string().max(4), z.string().nullable()).optional(),
           }),
         ),
