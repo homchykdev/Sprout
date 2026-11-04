@@ -43,10 +43,10 @@ export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
   text: string;
-  attachments?: ChatAttachmentRef[];
-  actions?: ChatAction[];
-  /** Per-action: ISO date when applied, null when ignored. Matches `actions` order. */
-  applied?: (string | null)[];
+  attachments?: ChatAttachmentRef[] | undefined;
+  actions?: ChatAction[] | undefined;
+  /** Per-action index: ISO when applied, null when dismissed, missing = undecided. */
+  applied?: Record<number, string | null> | undefined;
 }
 
 export interface ChatSession {

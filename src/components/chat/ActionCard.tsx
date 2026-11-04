@@ -46,9 +46,10 @@ export function ActionCard({
   index: number;
 }) {
   const mark = useChat((s) => s.markAction);
-  // applied[i]: undefined = not decided yet; null = dismissed; ISO string = applied.
-  const decided = message.applied != null && message.applied[index] !== undefined;
-  const appliedIso = decided ? (message.applied![index] ?? null) : null;
+  // applied[index]: missing = not decided yet; null = dismissed; ISO string = applied.
+  const state = message.applied?.[index];
+  const decided = state !== undefined;
+  const appliedIso = state ?? null;
   const [busyI, setBusyI] = useState(false);
 
   if (appliedIso != null) {

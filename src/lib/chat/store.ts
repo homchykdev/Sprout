@@ -99,14 +99,7 @@ export const useChat = create<ChatState & ChatActions>()(
               ? {
                   ...c,
                   messages: c.messages.map((m) =>
-                    m.id === messageId
-                      ? {
-                          ...m,
-                          applied: (m.applied ?? m.actions?.map(() => null) ?? []).map((v, i) =>
-                            i === index ? applied : v,
-                          ),
-                        }
-                      : m,
+                    m.id === messageId ? { ...m, applied: { ...m.applied, [index]: applied } } : m,
                   ),
                 }
               : c,

@@ -29,7 +29,7 @@ const BackupData = z.object({
               )
               .optional(),
             actions: z.array(z.unknown()).optional(),
-            applied: z.array(z.string().nullable()).optional(),
+            applied: z.record(z.string().max(4), z.string().nullable()).optional(),
           }),
         ),
       }),

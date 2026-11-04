@@ -58,8 +58,8 @@ export function ChatMessages({
           <Mascot mood="happy" size={110} />
           <p className="max-w-xs text-sm text-muted-foreground">
             Твой ИИ-тренер. Спроси что угодно про тренировки — от «составь план на неделю» до
-            «разбери технику приседа». В библиотеке уже{" "}
-            {aiCount ? `${aiCount} ИИ-упражнений` : "упражнения"}.
+            «разбери технику приседа».
+            {aiCount > 0 ? ` В библиотеке уже ${aiCount} ИИ-упражнений.` : ""}
           </p>
         </div>
       )}
