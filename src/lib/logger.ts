@@ -126,16 +126,23 @@ function log(level: LogLevel, tag: string, message: string, data?: unknown): voi
     message: truncate(redact(message), MESSAGE_LIMIT),
   };
   if (data !== undefined) {
-    const extra = truncate(redact(data instanceof Error ? describeValue(data) : safeStringify(data)), DATA_LIMIT);
+    const extra = truncate(
+      redact(data instanceof Error ? describeValue(data) : safeStringify(data)),
+      DATA_LIMIT,
+    );
     if (extra) entry.data = extra;
   }
   push(entry);
 }
 
-export const logDebug = (tag: string, message: string, data?: unknown) => log("debug", tag, message, data);
-export const logInfo = (tag: string, message: string, data?: unknown) => log("info", tag, message, data);
-export const logWarn = (tag: string, message: string, data?: unknown) => log("warn", tag, message, data);
-export const logError = (tag: string, message: string, data?: unknown) => log("error", tag, message, data);
+export const logDebug = (tag: string, message: string, data?: unknown) =>
+  log("debug", tag, message, data);
+export const logInfo = (tag: string, message: string, data?: unknown) =>
+  log("info", tag, message, data);
+export const logWarn = (tag: string, message: string, data?: unknown) =>
+  log("warn", tag, message, data);
+export const logError = (tag: string, message: string, data?: unknown) =>
+  log("error", tag, message, data);
 
 export function getLogs(): LogEntry[] {
   return state().entries;

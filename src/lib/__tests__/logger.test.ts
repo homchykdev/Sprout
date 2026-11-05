@@ -54,9 +54,7 @@ describe("redaction", () => {
   });
 
   it("leaves normal text and short ids alone", () => {
-    expect(redact("playlist 2026-11-05 id-12345 saved")).toBe(
-      "playlist 2026-11-05 id-12345 saved",
-    );
+    expect(redact("playlist 2026-11-05 id-12345 saved")).toBe("playlist 2026-11-05 id-12345 saved");
   });
 
   it("applies redaction to logged messages and data", () => {
@@ -134,7 +132,9 @@ describe("persistence", () => {
     try {
       logInfo("persist", "kept");
       setDebug(false); // flushNow()
-      const saved = JSON.parse(store.get("pulse.logs") ?? "null") as { entries: { message: string }[] };
+      const saved = JSON.parse(store.get("pulse.logs") ?? "null") as {
+        entries: { message: string }[];
+      };
       expect(saved.entries.map((e) => e.message)).toContain("kept");
     } finally {
       vi.unstubAllGlobals();
