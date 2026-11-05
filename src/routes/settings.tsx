@@ -11,6 +11,7 @@ import { SoundGroup } from "@/components/game/settings/SoundGroup";
 import { AiGroup } from "@/components/game/settings/AiGroup";
 import { VideoGroup } from "@/components/game/settings/VideoGroup";
 import { DataGroup } from "@/components/game/settings/DataGroup";
+import { LogsGroup } from "@/components/game/settings/LogsGroup";
 
 export const Route = createFileRoute("/settings")({
   head: () => ({
@@ -66,6 +67,7 @@ function SettingsBody() {
         <AiGroup />
         <VideoGroup />
         <DataGroup />
+        <LogsGroup />
       </div>
       <FloatingSaveBar />
       <UnsavedDialog
