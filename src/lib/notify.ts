@@ -1,5 +1,6 @@
 import { Capacitor } from "@capacitor/core";
 import { LocalNotifications } from "@capacitor/local-notifications";
+import { logWarn } from "./logger";
 
 /** System notification via the service worker when possible, else the Notification API. */
 export async function notify(title: string, body: string) {
@@ -36,7 +37,8 @@ export async function notify(title: string, body: string) {
       });
     else new Notification(title, { body, icon: "/icon-512.png" });
     return true;
-  } catch {
+  } catch (e) {
+    logWarn("notify", "Уведомление не отправлено", e);
     return false;
   }
 }

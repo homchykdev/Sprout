@@ -3,6 +3,7 @@ import { promoteKey } from "./ai-keys";
 import { fetchArticle } from "./article.functions";
 import type { ParsedArticleEx } from "./article";
 import { ffmpegPing } from "./ffmpeg.functions";
+import { timedLog } from "./logger";
 import { useApp, uid } from "./store";
 import {
   CATEGORIES,
@@ -64,13 +65,15 @@ export async function signedVideo(url?: string) {
 
 /** Returns a human line like "Ключ 2 работает · 340 мс". Throws a Russian error otherwise. */
 export async function checkAiKeys(override?: AiSettings): Promise<string> {
-  const ai = override ?? useApp.getState().ai;
-  if (!ai.keys.length) throw new Error("Добавьте ключ ИИ в настройках");
-  const r = await pingAi({ data: { provider: ai.provider, keys: ai.keys, baseUrl: ai.baseUrl } });
-  if (r.keyIndex > 0 && !override) {
-    useApp.getState().set({ ai: { ...ai, keys: promoteKey(ai.keys, r.keyIndex) } });
-  }
-  return `Ключ ${r.keyIndex + 1} работает · ${r.ms} мс`;
+  return timedLog("ai", "Проверка ключей ИИ", async () => {
+    const ai = override ?? useApp.getState().ai;
+    if (!ai.keys.length) throw new Error("Добавьте ключ ИИ в настройках");
+    const r = await pingAi({ data: { provider: ai.provider, keys: ai.keys, baseUrl: ai.baseUrl } });
+    if (r.keyIndex > 0 && !override) {
+      useApp.getState().set({ ai: { ...ai, keys: promoteKey(ai.keys, r.keyIndex) } });
+    }
+    return `Ключ ${r.keyIndex + 1} работает · ${r.ms} мс`;
+  });
 }
 
 /** Verifies the ffmpeg-api.com key via a cheap directory listing (no quota spent). */
@@ -173,15 +176,17 @@ export function feedbackSummary(library: Exercise[]): string {
 }
 
 export async function aiCreateExercise(request: string) {
-  const summary = feedbackSummary(useApp.getState().exercises);
-  const taste = summary
-    ? ` Учитывай вкусы пользователя: ${summary}. Дизлайкнутые типы нагрузки делай мягче или не предлагай без нужды, целевая сложность нового упражнения — близко к его оценкам.`
-    : "";
-  const j = await ask(
-    SYS,
-    `Создай упражнение по запросу: "${request}".${taste} Верни JSON: ${EX_SCHEMA}`,
-  );
-  return sanitizeExercise(j);
+  return timedLog("ai", "Создание упражнения", async () => {
+    const summary = feedbackSummary(useApp.getState().exercises);
+    const taste = summary
+      ? ` Учитывай вкусы пользователя: ${summary}. Дизлайкнутые типы нагрузки делай мягче или не предлагай без нужды, целевая сложность нового упражнения — близко к его оценкам.`
+      : "";
+    const j = await ask(
+      SYS,
+      `Создай упражнение по запросу: "${request}".${taste} Верни JSON: ${EX_SCHEMA}`,
+    );
+    return sanitizeExercise(j);
+  });
 }
 
 /** Model-provided sets, clamped to a sane range. Default 1 when the video says nothing. */
@@ -204,34 +209,36 @@ export interface SplitWorkout {
 
 /** Splits a public YouTube workout video into exercises (Gemini only). Clips reference the same video. */
 export async function aiSplitYoutube(youtubeUrl: string): Promise<SplitWorkout> {
-  const ai = useApp.getState().ai;
-  if (ai.provider !== "gemini")
-    throw new Error(
-      "Разбор видео доступен только с провайдером Gemini. Переключите его в настройках.",
-    );
-  if (!ai.keys.length) throw new Error("Добавьте ключ ИИ в настройках");
-  const { exercises, keyIndex } = await aiSplitWorkout({
-    data: { keys: ai.keys, model: ai.model, youtubeUrl },
+  return timedLog("ai", "Разбор видео YouTube", async () => {
+    const ai = useApp.getState().ai;
+    if (ai.provider !== "gemini")
+      throw new Error(
+        "Разбор видео доступен только с провайдером Gemini. Переключите его в настройках.",
+      );
+    if (!ai.keys.length) throw new Error("Добавьте ключ ИИ в настройках");
+    const { exercises, keyIndex } = await aiSplitWorkout({
+      data: { keys: ai.keys, model: ai.model, youtubeUrl },
+    });
+    if (keyIndex > 0) {
+      useApp.getState().set({ ai: { ...ai, keys: promoteKey(ai.keys, keyIndex) } });
+    }
+    const out: Exercise[] = [];
+    const sets: Record<string, number> = {};
+    for (const e of exercises) {
+      const bpm = clampTempoBpm(e.tempoBpm);
+      const ex: Exercise = {
+        ...sanitizeExercise(
+          { ...e, muscles: mapMuscles(e.muscles), category: mapCategory(e.category) },
+          { id: `ai-${uid()}`, videoUrl: youtubeUrl, source: "ai" as const },
+        ),
+        ...(bpm ? { bpm } : {}),
+        clips: e.clips.length ? e.clips : undefined,
+      };
+      out.push(ex);
+      sets[ex.id] = clampSets(e.sets);
+    }
+    return { exercises: out, sets };
   });
-  if (keyIndex > 0) {
-    useApp.getState().set({ ai: { ...ai, keys: promoteKey(ai.keys, keyIndex) } });
-  }
-  const out: Exercise[] = [];
-  const sets: Record<string, number> = {};
-  for (const e of exercises) {
-    const bpm = clampTempoBpm(e.tempoBpm);
-    const ex: Exercise = {
-      ...sanitizeExercise(
-        { ...e, muscles: mapMuscles(e.muscles), category: mapCategory(e.category) },
-        { id: `ai-${uid()}`, videoUrl: youtubeUrl, source: "ai" as const },
-      ),
-      ...(bpm ? { bpm } : {}),
-      clips: e.clips.length ? e.clips : undefined,
-    };
-    out.push(ex);
-    sets[ex.id] = clampSets(e.sets);
-  }
-  return { exercises: out, sets };
 }
 
 /** Builds a ready workout from a YouTube split (selected exercises only). */
@@ -253,11 +260,13 @@ export function buildWorkoutFromSplit(split: SplitWorkout, ids: string[], name: 
 }
 
 export async function aiImproveExercise(ex: Exercise, wish: string) {
-  const j = await ask(
-    SYS,
-    `Улучши описание упражнения (переведи на русский, если нужно). Пожелание: "${wish || "сделай понятнее, добавь частые ошибки"}". Текущее: ${JSON.stringify({ ...ex, videoUrl: undefined })}. Верни JSON: ${EX_SCHEMA}`,
-  );
-  return sanitizeExercise(j, ex);
+  return timedLog("ai", "Улучшение упражнения", async () => {
+    const j = await ask(
+      SYS,
+      `Улучши описание упражнения (переведи на русский, если нужно). Пожелание: "${wish || "сделай понятнее, добавь частые ошибки"}". Текущее: ${JSON.stringify({ ...ex, videoUrl: undefined })}. Верни JSON: ${EX_SCHEMA}`,
+    );
+    return sanitizeExercise(j, ex);
+  });
 }
 
 // ---------- Import from a blog article ----------
@@ -270,15 +279,17 @@ export type ArticleExercise = ParsedArticleEx;
  * downloaded into the device storage.
  */
 export async function aiImportArticle(url: string): Promise<ArticleExercise[]> {
-  const ai = useApp.getState().ai;
-  if (!ai.keys.length) throw new Error("Добавьте ключ ИИ в настройках");
-  const { exercises, keyIndex } = await fetchArticle({
-    data: { ...ai, keys: ai.keys, url: url.trim() },
+  return timedLog("ai", "Импорт статьи", async () => {
+    const ai = useApp.getState().ai;
+    if (!ai.keys.length) throw new Error("Добавьте ключ ИИ в настройках");
+    const { exercises, keyIndex } = await fetchArticle({
+      data: { ...ai, keys: ai.keys, url: url.trim() },
+    });
+    if (keyIndex > 0) {
+      useApp.getState().set({ ai: { ...ai, keys: promoteKey(ai.keys, keyIndex) } });
+    }
+    return exercises;
   });
-  if (keyIndex > 0) {
-    useApp.getState().set({ ai: { ...ai, keys: promoteKey(ai.keys, keyIndex) } });
-  }
-  return exercises;
 }
 
 /** Builds an Exercise from one article block (media link resolves in LinkMedia). */
@@ -308,43 +319,46 @@ export function buildWorkoutFromExercises(list: Exercise[], name: string): Worko
 }
 
 export async function aiCreateWorkout(goal: string, library: Exercise[]): Promise<Workout> {
-  const lib = library
-    .map(
-      (e) => `${e.id}|${e.name}|${e.category}|${e.mode}|${e.muscles.join(",")}${feedbackSuffix(e)}`,
-    )
-    .join("\n");
-  const summary = feedbackSummary(library);
-  const taste = summary
-    ? `\nОщущения пользователя по оценкам (${summary}). Учитывай это: упражнения с дизлайком исключай, но подбирай мягкую альтернативу на те же мышцы; лайкаемые — используй; сложность тренировки подбирай под оценки пользователя (если оценки низкие — усложняй объёмом, если высокие — вставляй больше отдыха и лёгких вариантов).`
-    : "";
-  const j = await ask(
-    SYS,
-    `Составь тренировку. Цель: "${goal}". Используй ТОЛЬКО упражнения из библиотеки (id|название|категория|режим|мышцы[|-feedback]):\n${lib}\n${taste}\nНачни с разминки, закончи растяжкой. Верни JSON: {"name":string,"emoji":string,"items":[{"exerciseId":string,"sets":number,"reps":number,"seconds":number,"rest":number}]}`,
-  );
-  const ids = new Set(library.map((e) => e.id));
-  interface WorkoutItemJson {
-    exerciseId?: unknown;
-    sets?: unknown;
-    reps?: unknown;
-    seconds?: unknown;
-    rest?: unknown;
-  }
-  const items = (Array.isArray(j.items) ? j.items : []) as WorkoutItemJson[];
-  return {
-    id: `w-${uid()}`,
-    name: String(j.name ?? "Моя тренировка"),
-    emoji: String(j.emoji ?? "⚡"),
-    items: items
-      .filter(
-        (i): i is WorkoutItemJson & { exerciseId: string } =>
-          typeof i.exerciseId === "string" && ids.has(i.exerciseId),
+  return timedLog("ai", "Составление тренировки", async () => {
+    const lib = library
+      .map(
+        (e) =>
+          `${e.id}|${e.name}|${e.category}|${e.mode}|${e.muscles.join(",")}${feedbackSuffix(e)}`,
       )
-      .map((i) => ({
-        exerciseId: i.exerciseId,
-        sets: Number(i.sets) || 2,
-        reps: Number(i.reps) || 12,
-        seconds: Number(i.seconds) || 40,
-        rest: Number(i.rest) || 45,
-      })),
-  };
+      .join("\n");
+    const summary = feedbackSummary(library);
+    const taste = summary
+      ? `\nОщущения пользователя по оценкам (${summary}). Учитывай это: упражнения с дизлайком исключай, но подбирай мягкую альтернативу на те же мышцы; лайкаемые — используй; сложность тренировки подбирай под оценки пользователя (если оценки низкие — усложняй объёмом, если высокие — вставляй больше отдыха и лёгких вариантов).`
+      : "";
+    const j = await ask(
+      SYS,
+      `Составь тренировку. Цель: "${goal}". Используй ТОЛЬКО упражнения из библиотеки (id|название|категория|режим|мышцы[|-feedback]):\n${lib}\n${taste}\nНачни с разминки, закончи растяжкой. Верни JSON: {"name":string,"emoji":string,"items":[{"exerciseId":string,"sets":number,"reps":number,"seconds":number,"rest":number}]}`,
+    );
+    const ids = new Set(library.map((e) => e.id));
+    interface WorkoutItemJson {
+      exerciseId?: unknown;
+      sets?: unknown;
+      reps?: unknown;
+      seconds?: unknown;
+      rest?: unknown;
+    }
+    const items = (Array.isArray(j.items) ? j.items : []) as WorkoutItemJson[];
+    return {
+      id: `w-${uid()}`,
+      name: String(j.name ?? "Моя тренировка"),
+      emoji: String(j.emoji ?? "⚡"),
+      items: items
+        .filter(
+          (i): i is WorkoutItemJson & { exerciseId: string } =>
+            typeof i.exerciseId === "string" && ids.has(i.exerciseId),
+        )
+        .map((i) => ({
+          exerciseId: i.exerciseId,
+          sets: Number(i.sets) || 2,
+          reps: Number(i.reps) || 12,
+          seconds: Number(i.seconds) || 40,
+          rest: Number(i.rest) || 45,
+        })),
+    };
+  });
 }

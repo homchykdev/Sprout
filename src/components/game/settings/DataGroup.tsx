@@ -18,6 +18,7 @@ import {
   type Strategy,
 } from "@/lib/backup";
 import { useApp, type AppState } from "@/lib/store";
+import { logInfo, logWarn, timedLog } from "@/lib/logger";
 import { cn } from "@/lib/utils";
 import { SectionCard } from "./SectionCard";
 
@@ -47,15 +48,17 @@ export function DataSection() {
   const file = useRef<HTMLInputElement>(null);
 
   const doExport = (id: SectionId) => {
-    const blob = new Blob([JSON.stringify(buildSingleFile(id), null, 2)], {
-      type: "application/json",
+    void timedLog("backup", `Экспорт «${SECTIONS[id].label}»`, async () => {
+      const blob = new Blob([JSON.stringify(buildSingleFile(id), null, 2)], {
+        type: "application/json",
+      });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = fileNameFor(id);
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+      toast.success(`Файл ${a.download} сохранён`);
     });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = fileNameFor(id);
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 3000);
-    toast.success(`Файл ${a.download} сохранён`);
   };
 
   const askImport = (id: SectionId) => {
@@ -71,8 +74,10 @@ export function DataSection() {
     if (!f || !target) return;
     try {
       const data = parseSingleFile(await f.text(), target);
+      logInfo("backup", `Файл «${f.name}» прочитан для «${SECTIONS[target].label}»`);
       setIncoming({ id: target, data });
     } catch (e) {
+      logWarn("backup", `Импорт отклонён (${SECTIONS[target].label})`, e);
       setProblem(friendlyError(target, e));
     }
   };
@@ -238,6 +243,7 @@ function ChatDataCard() {
     try {
       setIncoming(parseChatFile(await f.text()));
     } catch (e) {
+      logWarn("backup", "Импорт чатов отклонён", e);
       toast.error((e as Error).message);
     }
   };
@@ -299,6 +305,7 @@ function ChatDataCard() {
                 className="w-full"
                 onClick={() => {
                   useChat.getState().importBackup(incoming);
+                  logInfo("backup", "Импорт чатов применён");
                   setIncoming(null);
                   toast.success("Чаты загружены");
                 }}

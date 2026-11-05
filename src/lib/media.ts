@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { convertVideo, probeVideo, VIDEO_MAX_BYTES, VIDEO_MAX_SEC } from "./ffmpeg";
+import { logWarn } from "./logger";
 import type { PoseSpec, PoseStrain, PoseView } from "./pose";
 import { isHeicFile } from "./video-rules";
 
@@ -263,7 +264,8 @@ export async function addFiles(
           });
           added.push(id);
         }
-      } catch {
+      } catch (e) {
+        logWarn("media", `Файл пропущен — не читается: ${f.name}`, e);
         skipped.push(f.name);
       }
       continue;
@@ -315,8 +317,9 @@ export async function addFiles(
           added.push(id);
           converted.push(id);
           continue;
-        } catch {
+        } catch (e) {
           // Cloud failed (incl. CPU fallback) — store the original below.
+          logWarn("media", "Облачная конвертация видео не удалась", e);
         }
       }
       await putMedia({ ...base, kind, mime: f.type, blob: f });

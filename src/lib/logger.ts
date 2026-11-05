@@ -153,6 +153,22 @@ export function clearLogs(): void {
   flushNow();
 }
 
+/**
+ * Times an async flow and records its outcome (facts only — no request or
+ * response payload). Labels must be static Russian strings.
+ */
+export async function timedLog<T>(tag: string, label: string, run: () => Promise<T>): Promise<T> {
+  const t0 = Date.now();
+  try {
+    const out = await run();
+    logInfo(tag, label, `ок · ${Date.now() - t0} мс`);
+    return out;
+  } catch (e) {
+    logError(tag, `${label} · ${Date.now() - t0} мс`, e);
+    throw e;
+  }
+}
+
 export function isDebug(): boolean {
   return state().debug;
 }

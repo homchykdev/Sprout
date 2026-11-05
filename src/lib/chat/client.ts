@@ -1,5 +1,6 @@
 import { useApp } from "../store";
 import { askChat, type ChatMessageInput, type ChatPayload } from "../chat.functions";
+import { timedLog } from "../logger";
 import { buildAppSummary, buildSystemPrompt } from "./prompt";
 import { historyWindow, useChat } from "./store";
 import type { ChatMessage } from "./types";
@@ -52,16 +53,18 @@ export async function sendChat(
     ai.provider === "gemini",
   );
 
-  const { payload, keyIndex } = await askChat({
-    data: {
-      provider: ai.provider,
-      keys: ai.keys,
-      baseUrl: ai.baseUrl,
-      model: ai.model,
-      system,
-      messages,
-    },
-  });
+  const { payload, keyIndex } = await timedLog("ai", "Чат: запрос", () =>
+    askChat({
+      data: {
+        provider: ai.provider,
+        keys: ai.keys,
+        baseUrl: ai.baseUrl,
+        model: ai.model,
+        system,
+        messages,
+      },
+    }),
+  );
   if (keyIndex > 0) {
     // Prefer the key that still has quota next time.
     useApp.getState().set({ ai: { ...ai, keys: promote(ai.keys, keyIndex) } });
