@@ -12,6 +12,7 @@ import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
+import { installJournal } from "../lib/logger";
 import { AppShell } from "@/components/game/AppShell";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -131,6 +132,10 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+
+  // Client-only: wires console/onerror/unhandledrejection into the on-device
+  // journal (see Settings → Diagnostics). No-ops on the server.
+  useEffect(() => installJournal(), []);
 
   return (
     <QueryClientProvider client={queryClient}>
