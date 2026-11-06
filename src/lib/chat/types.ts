@@ -49,10 +49,40 @@ export interface ChatMessage {
   role: "user" | "assistant";
   text: string;
   attachments?: ChatAttachmentRef[] | undefined;
+  /** Entities attached from the app by the user (exercise / workout / plan). */
+  appRefs?: ChatAppRef[] | undefined;
+  /** Tool-call progress, rendered as quiet lines above the final text. */
+  steps?: ChatStep[] | undefined;
   actions?: ChatAction[] | undefined;
   sources?: ChatSource[] | undefined;
   /** Per-action index: ISO when applied, null when dismissed, missing = undecided. */
   applied?: Record<number, string | null> | undefined;
+  /** Per-action undo snapshot, written at apply time. */
+  snapshots?: Record<number, ChatSnapshot> | undefined;
+}
+
+/** One quiet progress line of a tool round. */
+export interface ChatStep {
+  label: string;
+  ts: string;
+}
+
+/** Full data of one app entity attached to a user message. */
+export interface ChatAppRef {
+  kind: "exercise" | "workout" | "plan";
+  id: string;
+  name: string;
+  /** JSON string of the entity at attach time (limited, see MAX_APP_REFS). */
+  data: string;
+}
+
+export const MAX_APP_REFS = 6;
+
+/** Undo snapshot: full affected-domain arrays at apply time. */
+export interface ChatSnapshot {
+  exercises?: Exercise[];
+  workouts?: Workout[];
+  planSteps?: PlanStep[];
 }
 
 export interface ChatSession {
@@ -72,9 +102,25 @@ export interface ChatBackup {
     sessions: ChatSession[];
     memory: string[];
     permissions: ChatPermissions;
+    videoCache?: Record<string, ChatVideoCacheEntry> | undefined;
   };
 }
 
 export const MAX_MEMORY_FACTS = 20;
 /** History window sent to the model (cost/control). */
 export const MAX_HISTORY_MESSAGES = 20;
+
+/** Callback sink the tool handlers push quiet progress lines into. */
+export interface ToolStepSink {
+  add(label: string): void;
+}
+
+/** Persisted video verification cache (per normalized exercise + hint). */
+export interface ChatVideoCacheEntry {
+  videoId: string;
+  title: string;
+  channel: string;
+  durationSec: number;
+  clip?: { start: number; end: number; source: "chapters" | "ai" | "whole" } | undefined;
+  verifiedAt: string;
+}

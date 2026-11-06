@@ -3,7 +3,12 @@ import { CATEGORIES, MUSCLES, type Exercise, type PlanStep, type Workout } from 
 import type { ChatPermissions } from "./types";
 import { DOMAIN_LABELS, MAX_HISTORY_MESSAGES } from "./types";
 
-/** Compact but honest state snapshot; the system prompt stays under ~4k tokens. */
+/**
+ * Compact but honest app snapshot — built like agent «skills»: one short line
+ * per entity (id, name, category, muscles, default volume), NO descriptions,
+ * steps or mistakes, so the system prompt stays under ~3k tokens. Full data is
+ * fetched by the `get_exercise_details` tool or attached by the user.
+ */
 export function buildAppSummary(s: {
   name: string;
   exercises: Exercise[];
@@ -16,39 +21,29 @@ export function buildAppSummary(s: {
   lines.push(`Пользователь: ${s.name || "имя не указано"}.`);
   lines.push(`Уровень ${lv.lvl}, опыт ${s.xp} XP (${lv.into}/${lv.need} до следующего).`);
 
-  // Streak days: count consecutive past days that had either a session or the plan promise.
-  lines.push(`Упражнений в библиотеке: ${s.exercises.length}.`);
-
-  const exLine = (e: Exercise) => {
+  lines.push(
+    `Каталог упражнений (${s.exercises.length}): id | название | категория | мышцы | объём`,
+  );
+  for (const e of s.exercises) {
     const muscles = e.muscles
       .slice(0, 3)
       .map((m) => MUSCLES[m])
       .join(", ");
     const mode = e.mode === "time" ? `${e.seconds} c` : `${e.reps} повт.`;
-    const fb = e.feedback
-      ? ` (оценка: ${[e.feedback.difficulty ? `сложность ${e.feedback.difficulty}/10` : "", e.feedback.verdict ?? ""].filter(Boolean).join(", ")})`
-      : "";
-    return `${e.emoji ?? "🏋️"} ${e.name} — ${CATEGORIES[e.category]}, ${muscles || "без мышц"}, ${mode}${fb}`;
-  };
-  // Favourites first: rated and AI-made exercises say the most about taste.
-  const top = [
-    ...s.exercises.filter((e) => e.feedback || e.source === "ai"),
-    ...s.exercises.filter((e) => !e.feedback && e.source !== "ai"),
-  ].slice(0, 25);
-  lines.push("Библиотека (верхние 25):");
-  for (const e of top) lines.push(`- ${exLine(e)}`);
+    const video = e.videoUrl ? " [видео]" : "";
+    lines.push(
+      `- ${e.id} | ${e.name} | ${CATEGORIES[e.category]} | ${muscles || "—"} | ${mode}${video}`,
+    );
+  }
 
-  lines.push(`Тренировки: ${s.workouts.length}.`);
-  for (const w of s.workouts.slice(0, 15)) {
-    const items = w.items
+  lines.push(`Тренировки (${s.workouts.length}):`);
+  for (const w of s.workouts) {
+    const names = w.items
       .slice(0, 8)
-      .map((i) => {
-        const ex = s.exercises.find((x) => x.id === i.exerciseId);
-        return `${ex?.name ?? "?"}×${i.sets}${i.bpm ? ` ${i.bpm}bpm` : ""}`;
-      })
+      .map((i) => s.exercises.find((x) => x.id === i.exerciseId)?.name ?? "?")
       .join(", ");
     lines.push(
-      `- ${w.emoji} ${w.name}: ${items}${w.items.length > 8 ? ", …" : ""}${w.feedback ? ` (оценка: ${[w.feedback.difficulty ? `сложность ${w.feedback.difficulty}/10` : "", w.feedback.verdict ?? ""].filter(Boolean).join(", ")})` : ""}`,
+      `- ${w.id} | ${w.name} | ${w.items.length} упр. | ${names}${w.items.length > 8 ? ", …" : ""}`,
     );
   }
 
@@ -60,6 +55,9 @@ export function buildAppSummary(s: {
     );
   }
   if (s.plan.steps.length > 10) lines.push("- … (дальше цикл повторяется)");
+  lines.push(
+    "Оценки пользователей встречаются у части упражнений; полные данные — только через get_exercise_details или вложения.",
+  );
   return lines.join("\n");
 }
 
@@ -70,6 +68,7 @@ export function buildSystemPrompt(
   memory: string[],
   permissions: ChatPermissions,
   webGrounding = false,
+  toolsMode = false,
 ): string {
   const perms = (Object.keys(DOMAIN_LABELS) as (keyof ChatPermissions)[])
     .map((d) => `${DOMAIN_LABELS[d]}: ${permissions[d]}`)
@@ -103,6 +102,16 @@ export function buildSystemPrompt(
     `Валидные ключи мышц (только эти): ${Object.keys(MUSCLES).join(", ")}.`,
     `Валидные категории: ${Object.keys(CATEGORIES).join(", ")}.`,
     "",
+    "ПОИСК В КАТАЛОГЕ И МАТЧИНГ ИМЁН:",
+    "- Ищите упражнение в каталоге ПО ПОДСТРОКЕ БЕЗ УЧЁТА РЕГИСТРА: «отжимания», «Отжимания», «ОТЖИМАНИЯ» — одно и то же.",
+    "- Не отказывайте только потому, что буква в слове другая: «добавь отжиманиям видео» — это про существующее «Отжимания».",
+    "- Инструмент add_video_to_exercise уже ищет так же — передавайте имя так, как его назвал пользователь.",
+    "",
+    "ПОВЕДЕНИЕ ПО УМОЛЧАНИЮ:",
+    "- Максимум ОДИН уточняющий вопрос за ход. Если запрос однозначен («добавь видео к отжиманиям») — делайте действие сразу: видео ищите сами.",
+    "- Только совершённые действия считаются фактами: инструмент вернул status=applied — тогда «сделано»; status=pending_confirmation — говорите «предлагаю, подтверди карточкой»; tool вернул ошибку — честно говорите, что НЕ сделано.",
+    "- Никогда не говорите «добавил/сделал», если статус инструмента не applied. Не повторяйте мутацию дважды.",
+    "",
     "ЖЁСТКИЕ ОГРАНИЧЕНИЯ:",
     "- Никогда не изменяй настройки приложения, API-ключи и доступы сам. Можешь посоветовать, как их настроить в Настройках.",
     "- Не выдумывай exerciseId/workoutId — используй только существующие (см. данные).",
@@ -121,6 +130,16 @@ export function buildSystemPrompt(
     webGrounding
       ? "- Доступны Google Search и URL context. Используй поиск для актуальных/внешних фактов и URL context для предоставленных публичных ссылок. Ссылайся только на полученные источники; если поиск или извлечение не сработали — скажи об этом."
       : "- В этом чате веб-поиск и URL context недоступны. Не утверждай, что проверил интернет, и не выдавай ссылки или актуальные внешние факты за подтверждённые; сообщи об ограничении и предложи поисковый запрос.",
+    ...(toolsMode
+      ? ([
+          "ВИДЕО И ИНСТРУМЕНТЫ (function calling):",
+          "- Для любого видео используй инструменты find_exercise_video → add_video_to_exercise. Никогда не пиши URL, video ID или таймкоды сам — только video_ref из результата инструмента.",
+          "- find_exercise_video возвращает реальный проверенный ролик и, если смог, точный сегмент. Не описывай содержимое видео за пределами того, что вернул инструмент.",
+          "- Изменения (add_video_to_exercise / create_workout / add_plan_step) не дублируй в actions — инструмент уже приготовил карточку.",
+          "- get_exercise_details — быстрый и бесплатный; используй вместо вопросов пользователю, когда данных каталога мало.",
+          "- Если инструмент не смог (not_found / лимит) — честно скажи об этом и предложи вставить ссылку. Не выдумывай альтернативные видео по памяти.",
+        ] as const)
+      : []),
     "",
     "Права пользователя на изменения: " + perms,
     "Запомненное о пользователе (краткая память):",

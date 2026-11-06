@@ -1,8 +1,26 @@
 import { ActionCard } from "./ActionCard";
 import { useApp } from "@/lib/store";
-import type { ChatMessage } from "@/lib/chat/types";
+import type { ChatMessage, ChatStep } from "@/lib/chat/types";
 import { cn } from "@/lib/utils";
 import { Mascot } from "@/components/game/Mascot";
+
+/** Quiet tool-progress rows: smaller, no frame, low emphasis (per user spec). */
+function StepLine({ steps }: { steps: ChatStep[] }) {
+  if (!steps.length) return null;
+  return (
+    <div className="mb-1 ml-3 space-y-1" aria-live="polite">
+      {steps.map((s, i) => (
+        <p
+          key={i}
+          className="animate-pop flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground/80"
+        >
+          <span className="h-1 w-1 shrink-0 rounded-full bg-muted-foreground/50" />
+          {s.label}
+        </p>
+      ))}
+    </div>
+  );
+}
 
 /** One stored message bubble; assistant actions render as confirm cards. */
 export function ChatMessages({
@@ -24,12 +42,21 @@ export function ChatMessages({
           )}
           style={{ animationDelay: `${Math.min(i, 6) * 30}ms` }}
         >
-          {m.attachments?.length ? (
+          {m.role === "user" && (m.attachments?.length || m.appRefs?.length) ? (
             <p className="mb-1 text-right text-[11px] text-muted-foreground">
-              {m.role === "user" ? "вложения: " : ""}
-              {m.attachments.map((a) => a.name).join(", ")}
+              {[
+                m.attachments?.length
+                  ? `вложения: ${m.attachments.map((a) => a.name).join(", ")}`
+                  : "",
+                m.appRefs?.length
+                  ? `из приложения: ${m.appRefs.map((a) => a.name).join(", ")}`
+                  : "",
+              ]
+                .filter(Boolean)
+                .join(" · ")}
             </p>
           ) : null}
+          {m.role === "assistant" && <StepLine steps={m.steps ?? []} />}
           <div
             className={cn(
               "rounded-3xl px-4 py-3 text-[15px] leading-relaxed",
@@ -38,11 +65,24 @@ export function ChatMessages({
                 : "rounded-bl-md card-soft border-0",
             )}
           >
-            {m.text.split("\n").map((line, j) => (
-              <p key={j} className={cn(line.startsWith("-") && "pl-3")}>
-                {line}
-              </p>
-            ))}
+            {m.role === "assistant" && !m.text ? (
+              // Live placeholder while tool rounds run.
+              <span className="flex items-center gap-1.5" aria-hidden>
+                {[0, 1, 2].map((d) => (
+                  <span
+                    key={d}
+                    className="h-1.5 w-1.5 animate-pulse rounded-full bg-muted-foreground/40"
+                    style={{ animationDelay: `${d * 150}ms` }}
+                  />
+                ))}
+              </span>
+            ) : (
+              m.text.split("\n").map((line, j) => (
+                <p key={j} className={cn(line.startsWith("-") && "pl-3")}>
+                  {line}
+                </p>
+              ))
+            )}
           </div>
           {m.sources?.length ? (
             <div className="mt-2 space-y-1 px-2 text-xs">
@@ -63,7 +103,14 @@ export function ChatMessages({
           {m.actions?.length ? (
             <div className="mt-2 space-y-2">
               {m.actions.map((a, idx) => (
-                <ActionCard key={a.id} sessionId={sessionId} message={m} action={a} index={idx} />
+                <ActionCard
+                  key={a.id}
+                  sessionId={sessionId}
+                  message={m}
+                  action={a}
+                  index={idx}
+                  snapshot={m.snapshots?.[idx]}
+                />
               ))}
             </div>
           ) : null}

@@ -403,3 +403,82 @@ export const aiSplitWorkout = createServerFn({ method: "POST" })
     if (last instanceof Error) throw last;
     throw new Error("Лимиты исчерпаны на всех ключах. Попробуйте позже.");
   });
+
+// ---------- Video segment analysis (Gemini only, token-expensive) ----------
+
+const SegmentInput = z.object({
+  keys: Keys,
+  model: z.string().min(1),
+  /** YouTube URL built by OUR code from an API-derived videoId (never from model text). */
+  youtubeUrl: z.string().url().max(500),
+  /** What to look for, e.g. "отжимания" or "push ups". */
+  exerciseHint: z.string().trim().min(1).max(200),
+});
+
+const SegmentResult = z.object({
+  exercise_present: z.boolean(),
+  start_sec: z.number().nonnegative().optional(),
+  end_sec: z.number().positive().optional(),
+  confidence: z.number().min(0).max(1).default(0),
+});
+
+const SEGMENT_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    exercise_present: { type: Type.BOOLEAN },
+    start_sec: { type: Type.NUMBER },
+    end_sec: { type: Type.NUMBER },
+    confidence: { type: Type.NUMBER },
+  },
+  required: ["exercise_present", "confidence"],
+};
+
+const SEGMENT_INSTRUCTION =
+  "Найди в этом видео диапазон, где упражнение ВЫПОЛНЯЕТСЯ (не вступление, не разговор, не другое упражнение).";
+
+/**
+ * Asks Gemini to find the time range where ONE exercise is performed in a
+ * public YouTube video (YouTube URL as FileData — a Preview feature). Every
+ * failure is a normal null, never a crash: callers fall back to chapters or
+ * to asking the user for a link. Structured output keeps parsing honest.
+ */
+export const aiAnalyzeVideoSegment = createServerFn({ method: "POST" })
+  .validator((d) => SegmentInput.parse(d))
+  .handler(async ({ data }) => {
+    const prompt = `${SEGMENT_INSTRUCTION} Упражнение: «${data.exerciseHint}».
+Диапазон должен содержать несколько чистых повторений. Если упражнение не выполняется —
+поставь exercise_present=false и не выдумывай таймкоды. Уверенность 0..1; не угадывай.`;
+    const callSegment = async (apiKey: string) => {
+      const ai = new GoogleGenAI({
+        apiKey,
+        httpOptions: { timeout: 180_000, retryOptions: { attempts: 1 } },
+      });
+      const response = await ai.models.generateContent({
+        model: data.model,
+        contents: [{ fileData: { fileUri: data.youtubeUrl } }, { text: prompt }],
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: SEGMENT_SCHEMA,
+        },
+      });
+      const parsed = SegmentResult.safeParse(JSON.parse(response.text ?? "null"));
+      if (!parsed.success) throw new Error("Модель вернула таймкоды в неверном формате.");
+      return parsed.data;
+    };
+    let last: unknown = null;
+    for (let i = 0; i < data.keys.length; i++) {
+      try {
+        const result = await callSegment(data.keys[i]!);
+        if (!result.exercise_present || result.start_sec == null || result.end_sec == null) {
+          return { clip: null };
+        }
+        return {
+          clip: { start: result.start_sec, end: result.end_sec, confidence: result.confidence },
+        };
+      } catch (e) {
+        if (statusOf(e) == null) throw e;
+        last = e;
+      }
+    }
+    throw last instanceof Error ? last : new Error("Лимиты исчерпаны на всех ключах.");
+  });

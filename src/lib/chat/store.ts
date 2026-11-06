@@ -9,6 +9,7 @@ import {
   type ChatMessage,
   type ChatPermissions,
   type ChatSession,
+  type ChatVideoCacheEntry,
 } from "./types";
 
 interface ChatState {
@@ -17,6 +18,8 @@ interface ChatState {
   activeId: string | null;
   memory: string[];
   permissions: ChatPermissions;
+  /** Verified video cache keyed by `normalized exercise|hint` (quota guard). */
+  videoCache: Record<string, ChatVideoCacheEntry>;
 }
 
 interface ChatActions {
@@ -33,6 +36,7 @@ interface ChatActions {
   setPermissions: (p: ChatPermissions) => void;
   remember: (learn: string[], forget: string[]) => void;
   setMemory: (facts: string[]) => void;
+  setVideoCacheEntry: (key: string, entry: ChatVideoCacheEntry) => void;
   /** Deletes every session but keeps memory and permissions. */
   clearAll: () => void;
   importBackup: (b: ChatBackup) => void;
@@ -43,6 +47,7 @@ const initialState: ChatState = {
   activeId: null,
   memory: [],
   permissions: { ...DEFAULT_PERMISSIONS },
+  videoCache: {},
 };
 
 /** History window sent to the model: newest N messages. */
@@ -140,13 +145,17 @@ export const useChat = create<ChatState & ChatActions>()(
 
       setMemory: (facts) => set({ memory: mergeFacts([], facts, []) }),
 
-      clearAll: () => set({ ...initialState, permissions: get().permissions }),
+      setVideoCacheEntry: (key, entry) =>
+        set((s) => ({ videoCache: { ...s.videoCache, [key]: entry } })),
+
+      clearAll: () => set((s) => ({ ...initialState, permissions: s.permissions })),
 
       importBackup: (b) =>
         set(() => ({
           sessions: b.data.sessions ?? [],
           memory: b.data.memory ?? [],
           permissions: { ...DEFAULT_PERMISSIONS, ...(b.data.permissions ?? {}) },
+          videoCache: b.data.videoCache ?? {},
           activeId: null,
         })),
     }),
@@ -158,6 +167,7 @@ export const useChat = create<ChatState & ChatActions>()(
         activeId: s.activeId,
         memory: s.memory,
         permissions: s.permissions,
+        videoCache: s.videoCache,
       }),
     },
   ),

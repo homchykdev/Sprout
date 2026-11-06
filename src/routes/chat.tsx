@@ -1,7 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { History, ShieldQuestion } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ChatComposer } from "@/components/chat/ChatComposer";
 import { ChatMessages } from "@/components/chat/ChatMessages";
@@ -10,7 +9,7 @@ import { PermissionsEditor } from "@/components/chat/PermissionsEditor";
 import { sendChat } from "@/lib/chat/client";
 import { parseActions, applyAction } from "@/lib/chat/sanitize";
 import { useChat } from "@/lib/chat/store";
-import type { ChatAction, ChatMessage } from "@/lib/chat/types";
+import type { ChatAction, ChatAppRef, ChatMessage, ChatSnapshot } from "@/lib/chat/types";
 import { uid, useApp } from "@/lib/store";
 
 export const Route = createFileRoute("/chat")({
@@ -66,6 +65,7 @@ function ChatScreen() {
   const send = async (
     text: string,
     attachments: { name: string; mimeType: string; base64: string }[],
+    appRefs: ChatAppRef[] = [],
   ) => {
     if (busy) return;
     const chat = useChat.getState();
@@ -76,32 +76,80 @@ function ChatScreen() {
       role: "user",
       text,
       attachments: attachments.map((a) => ({ name: a.name, mimeType: a.mimeType, size: 0 })),
+      appRefs: appRefs.length ? appRefs : undefined,
     };
     chat.addMessage(s.id, userMsg);
     setBusy(true);
+    // Assistant placeholder paints tool progress live; filled at the end.
+    const assistantId = uid();
+    chat.addMessage(s.id, { id: assistantId, role: "assistant", text: "", steps: [] });
+    const readAssistant = () =>
+      useChat
+        .getState()
+        .sessions.find((c) => c.id === s.id)
+        ?.messages.find((m) => m.id === assistantId);
+    const patch = (p: Partial<ChatMessage>) => {
+      if (readAssistant()) useChat.getState().patchMessage(s.id, assistantId, p);
+    };
+    /** Writes undo snapshot for an action at apply time. */
+    const patchSnap = (idx: number, snap: ChatSnapshot) => {
+      const cur = readAssistant();
+      patch({
+        snapshots: { ...(cur?.snapshots ?? {}), [idx]: snap },
+      });
+    };
+    const snapFor = (a: ChatAction): ChatSnapshot =>
+      useApp
+        .getState()
+        .captureSnapshot(
+          a.kind === "create_workout"
+            ? ["workouts"]
+            : a.kind === "add_plan_step"
+              ? ["plan"]
+              : ["exercises"],
+        );
     try {
-      const { payload } = await sendChat([...s.messages, userMsg], { text, attachments });
-      const actions: ChatAction[] = parseActions(
+      const { payload, toolActions, appliedToolActions, steps } = await sendChat(
+        [...s.messages, userMsg],
+        { text, attachments, appRefs },
+        (step) => patch({ steps: [...(readAssistant()?.steps ?? []), step] }),
+      );
+      // Tool cards first (they may be already applied silently), then the
+      // model's own JSON-contract actions, sanitized as before.
+      const modelActions: ChatAction[] = parseActions(
         payload.actions,
         useChat.getState().permissions,
         useApp.getState(),
       );
-      const assistant: ChatMessage = {
-        id: uid(),
-        role: "assistant",
+      const actions = [...toolActions, ...modelActions];
+      patch({
         text: payload.reply,
-        actions,
+        steps,
+        actions: actions.length ? actions : undefined,
         sources: payload.sources,
-      };
-      chat.addMessage(s.id, assistant);
-      // "always"-mode actions apply silently right away.
-      actions.forEach((a, i) => {
-        if (a.permission !== "always") return;
-        chat.markAction(s.id, assistant.id, i, applyAction(a) ? new Date().toISOString() : null);
       });
-      chat.remember(payload.memory?.learn ?? [], payload.memory?.forget ?? []);
+      // Tool actions: mark applied / snapshot (the handler did the write).
+      appliedToolActions.forEach((idx) => {
+        const a = toolActions[idx];
+        if (!a) return;
+        useChat.getState().markAction(s.id, assistantId, idx, new Date().toISOString());
+        patchSnap(idx, snapFor(a));
+      });
+      // "always"-mode JSON actions apply silently right away.
+      modelActions.forEach((a, i) => {
+        if (a.permission !== "always") return;
+        const idx = toolActions.length + i;
+        const snap = snapFor(a);
+        if (applyAction(a)) {
+          useChat.getState().markAction(s.id, assistantId, idx, new Date().toISOString());
+          patchSnap(idx, snap);
+        } else {
+          useChat.getState().markAction(s.id, assistantId, idx, null);
+        }
+      });
+      useChat.getState().remember(payload.memory?.learn ?? [], payload.memory?.forget ?? []);
     } catch (e) {
-      toast.error((e as Error).message);
+      patch({ text: (e as Error).message || "Ошибка запроса к ИИ." });
     } finally {
       setBusy(false);
     }

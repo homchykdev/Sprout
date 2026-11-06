@@ -4,6 +4,7 @@ import {
   type ChatBackup,
   type ChatPermissions,
   type ChatSession,
+  type ChatVideoCacheEntry,
 } from "./types";
 import { useChat } from "./store";
 
@@ -29,6 +30,25 @@ const BackupData = z.object({
               )
               .optional(),
             actions: z.array(z.unknown()).optional(),
+            steps: z
+              .array(
+                z.object({
+                  label: z.string().max(200),
+                  ts: z.string().max(40),
+                }),
+              )
+              .optional(),
+            appRefs: z
+              .array(
+                z.object({
+                  kind: z.enum(["exercise", "workout", "plan"]),
+                  id: z.string(),
+                  name: z.string(),
+                  data: z.string().max(40_000),
+                }),
+              )
+              .optional(),
+            snapshots: z.record(z.string(), z.unknown()).optional(),
             sources: z
               .array(
                 z.object({
@@ -49,6 +69,7 @@ const BackupData = z.object({
     .optional(),
   memory: z.array(z.string()).optional(),
   permissions: z.record(z.enum(["always", "ask", "off"])).optional(),
+  videoCache: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const chatFileName = (day = new Date().toISOString().slice(0, 10)) =>
@@ -62,7 +83,12 @@ export function buildChatFile(): ChatBackup {
     version: 2,
     section: "chats",
     exportedAt: new Date().toISOString(),
-    data: { sessions: s.sessions, memory: s.memory, permissions: s.permissions },
+    data: {
+      sessions: s.sessions,
+      memory: s.memory,
+      permissions: s.permissions,
+      videoCache: s.videoCache,
+    },
   };
 }
 
@@ -90,6 +116,7 @@ export function parseChatFile(text: string): ChatBackup {
       sessions: (d.sessions ?? []) as ChatSession[],
       memory: d.memory ?? [],
       permissions: { ...DEFAULT_PERMISSIONS, ...(d.permissions as ChatPermissions | undefined) },
+      videoCache: (d.videoCache ?? undefined) as Record<string, ChatVideoCacheEntry> | undefined,
     },
   };
 }

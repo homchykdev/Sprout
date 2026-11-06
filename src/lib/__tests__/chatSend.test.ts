@@ -44,7 +44,10 @@ describe("sendChat sends the dialogue history", () => {
       } as ReturnType<typeof useApp.getState>["ai"],
     });
     mockedAsk.mockReset();
-    mockedAsk.mockResolvedValue({ payload: { reply: "ок" }, keyIndex: 0 });
+    mockedAsk.mockResolvedValue({
+      round: { kind: "final", payload: { reply: "ок" } },
+      keyIndex: 0,
+    });
   });
 
   it("includes previous user and assistant turns before the new message", async () => {

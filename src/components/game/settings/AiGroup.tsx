@@ -3,7 +3,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { TapButton } from "@/components/game/TapButton";
 import { maskKey } from "@/lib/ai-keys";
-import { checkAiKeys } from "@/lib/clients";
+import { checkAiKeys, checkYouTubeKey } from "@/lib/clients";
 import { cn } from "@/lib/utils";
 import { sliceChanged } from "@/lib/settings-draft";
 import { SectionCard, field } from "./SectionCard";
@@ -116,6 +116,28 @@ export function AiGroup() {
         onChange={(e) => updateAi({ model: e.target.value.trim() })}
         aria-label="Модель ИИ"
       />
+      {ai.provider === "gemini" && (
+        <div className="space-y-1">
+          <input
+            className={field}
+            type="password"
+            placeholder="YouTube Data API ключ (бесплатный) — для поиска видео"
+            value={ai.youtubeKey ?? ""}
+            onChange={(e) => updateAi({ youtubeKey: e.target.value.trim() })}
+            aria-label="YouTube Data API ключ"
+          />
+          <ApiCheck
+            label="Проверить YouTube-ключ"
+            check={() => checkYouTubeKey(ai.youtubeKey ?? "")}
+            disabled={!ai.youtubeKey}
+          />
+          <p className="text-xs text-muted-foreground">
+            Бесплатный ключ из Google Cloud Console (YouTube Data API v3, ограничения не нужны). Чат
+            будет сам находить и проверять видео для упражнений. Без ключа видео добавляются только
+            вставкой ссылки.
+          </p>
+        </div>
+      )}
       <ApiCheck
         label="Проверить ключи"
         check={() => checkAiKeys(ai)}

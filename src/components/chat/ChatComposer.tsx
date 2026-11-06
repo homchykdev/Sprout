@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { Loader2, Paperclip, Send, X } from "lucide-react";
+import { BookMarked, Loader2, Paperclip, Send, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import type { ChatAppRef } from "@/lib/chat/types";
+import { AppDataPicker } from "./AppDataPicker";
 
 const MAX_FILE_MB = 10;
 const MAX_FILES = 4;
@@ -22,12 +24,14 @@ export function ChatComposer({
   /** Seed prompt to drop into the input once (e.g. `?seed=exercise`). */
   prefill?: string | undefined;
   onPrefillConsumed?: () => void;
-  onSend: (text: string, attachments: PendingAttachment[]) => void;
+  onSend: (text: string, attachments: PendingAttachment[], appRefs: ChatAppRef[]) => void;
 }) {
   const [text, setText] = useState("");
   const [files, setFiles] = useState<File[]>([]);
+  const [appRefs, setAppRefs] = useState<ChatAppRef[]>([]);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
-  const sending = busy || (text.trim().length === 0 && files.length === 0);
+  const sending = busy || (text.trim().length === 0 && files.length === 0 && appRefs.length === 0);
 
   useEffect(() => {
     if (prefill) {
@@ -55,11 +59,13 @@ export function ChatComposer({
     if (sending) return;
     const t = text.trim();
     const picked = files;
+    const refs = appRefs;
     setText("");
     setFiles([]);
+    setAppRefs([]);
     try {
       const atts = await Promise.all(picked.map(toBase64));
-      onSend(t, atts);
+      onSend(t, atts, refs);
     } catch {
       toast.error("Не удалось прочитать вложение");
     }
@@ -68,8 +74,38 @@ export function ChatComposer({
   return (
     <div className="glass fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-30 border-t py-2">
       <div className="mx-auto max-w-xl px-3">
-        {files.length > 0 && (
+        {pickerOpen && (
+          <div className="mb-2">
+            <AppDataPicker
+              onClose={() => setPickerOpen(false)}
+              onPick={(r) =>
+                setAppRefs((prev) =>
+                  prev.some((x) => x.kind === r.kind && x.id === r.id)
+                    ? prev
+                    : [...prev, r].slice(0, 6),
+                )
+              }
+            />
+          </div>
+        )}
+        {(files.length > 0 || appRefs.length > 0) && (
           <div className="mb-2 flex flex-wrap gap-1.5">
+            {appRefs.map((r, i) => (
+              <span
+                key={`${r.kind}-${r.id}`}
+                className="flex max-w-full items-center gap-1 rounded-full bg-gold-soft px-2.5 py-1 text-[11px] font-semibold text-gold-shade shadow-sm"
+              >
+                <span className="max-w-40 truncate">Из приложения: {r.name}</span>
+                <button
+                  type="button"
+                  aria-label={`Убрать ${r.name}`}
+                  onClick={() => setAppRefs(appRefs.filter((_, j) => j !== i))}
+                  className="press"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </span>
+            ))}
             {files.map((f, i) => (
               <span
                 key={`${f.name}-${i}`}
@@ -109,6 +145,18 @@ export function ChatComposer({
             className="press flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted"
           >
             <Paperclip className="h-5 w-5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setPickerOpen((open) => !open)}
+            aria-label="Прикрепить данные из приложения"
+            aria-expanded={pickerOpen}
+            className={cn(
+              "press flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted",
+              pickerOpen && "bg-muted text-foreground",
+            )}
+          >
+            <BookMarked className="h-5 w-5" />
           </button>
           <textarea
             rows={1}

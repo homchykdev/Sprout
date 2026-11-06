@@ -1,10 +1,20 @@
 import { createServerFn } from "@tanstack/react-start";
-import { GoogleGenAI, type Content } from "@google/genai";
+import {
+  GoogleGenAI,
+  type Content,
+  type FunctionCall,
+  type FunctionDeclaration,
+} from "@google/genai";
 import { z } from "zod";
 import { normalizeAiContent } from "./ai-content";
 import { mapHttpError, statusOf } from "./ai.functions";
 import { extractGroundedSources } from "./chat/grounding";
+import { TOOL_DEFS, TOOL_NAMES } from "./chat/tooldefs";
 import type { ChatSource } from "./chat/types";
+
+/** Loop guards (the plan §9): rounds per message and calls per round. */
+export const MAX_TOOL_ROUNDS = 6;
+export const CALLS_PER_ROUND = 12;
 
 const Attachment = z.object({
   mimeType: z
@@ -24,6 +34,19 @@ export const ChatMessageInput = z.object({
 
 export type ChatMessageInput = z.infer<typeof ChatMessageInput>;
 
+/** One previous round of tool calls with their tool results (loop history). */
+const ToolRound = z
+  .object({
+    /** funcionCall parts the model produced in a previous round. */
+    calls: z
+      .array(z.object({ name: z.string().max(60), args: z.string().max(8_000) }))
+      .min(1)
+      .max(CALLS_PER_ROUND),
+    /** JSON tool responses; `results[i]` answers `calls[i]`. */
+    results: z.array(z.string().max(40_000)).max(CALLS_PER_ROUND),
+  })
+  .refine((r) => r.calls.length === r.results.length, { message: "calls/results mismatch" });
+
 const Input = z.object({
   provider: z.enum(["gemini", "openai"]),
   keys: z.array(z.string().min(4)).min(1).max(10),
@@ -31,6 +54,10 @@ const Input = z.object({
   model: z.string().min(1),
   system: z.string().max(32_000),
   messages: z.array(ChatMessageInput).min(1).max(40),
+  /** Enable function-calling for this round (Gemini video tools). */
+  tools: z.boolean().optional(),
+  /** Tool rounds already executed client-side; sent back inside `contents`. */
+  rounds: z.array(ToolRound).max(MAX_TOOL_ROUNDS).optional(),
 });
 
 /** One action the assistant proposes; `data` carries a JSON-serialized payload. */
@@ -62,6 +89,74 @@ export function toGeminiContents(messages: ChatMessageInput[]): Content[] {
       })),
     ],
   }));
+}
+
+export interface ToolCallOut {
+  /** Synthetic id, stable within one askChat request. */
+  id: string;
+  name: string;
+  /** JSON-stringified args (server fn responses must stay serializable). */
+  argsJson: string;
+}
+
+/** Discriminated result of one askChat round (tool-loop or the final answer). */
+export type ChatRoundResult =
+  { kind: "tool_calls"; calls: ToolCallOut[] } | { kind: "final"; payload: ChatPayload };
+
+function parseArgsJson(raw: unknown): Record<string, unknown> {
+  if (typeof raw === "object" && raw !== null && !Array.isArray(raw)) {
+    return raw as Record<string, unknown>;
+  }
+  return {};
+}
+
+/**
+ * Builds full `contents` for generateContent: visible history + every executed
+ * tool round replayed exactly as received (model functionCall turn, then one
+ * user turn with all functionResponse parts), so parallel calls stay intact.
+ */
+export function roundContents(
+  messages: ChatMessageInput[],
+  rounds: { calls: { name: string; args: string }[]; results: string[] }[],
+): Content[] {
+  const content = toGeminiContents(messages);
+  for (const round of rounds) {
+    content.push({
+      role: "model",
+      parts: round.calls.map((call) => ({
+        functionCall: { name: call.name, args: parseArgsJson(safeJson(call.args)) },
+      })),
+    });
+    content.push({
+      role: "user",
+      parts: round.results.map((res, i) => ({
+        functionResponse: {
+          name: round.calls[i]?.name ?? "tool",
+          response: parseArgsJson(safeJson(res)),
+        },
+      })),
+    });
+  }
+  return content;
+}
+
+function safeJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return {};
+  }
+}
+
+/** Types `functionCall` args from SDK responses into serializable JSON strings. */
+function callsFromResponse(calls: FunctionCall[] | undefined): ToolCallOut[] {
+  return (calls ?? [])
+    .filter((call) => typeof call?.name === "string" && TOOL_NAMES.has(call.name))
+    .map((call, i) => ({
+      id: `fc-${i}`,
+      name: call.name!,
+      argsJson: JSON.stringify(call.args ?? {}),
+    }));
 }
 
 interface ChatKeyFailure {
@@ -246,6 +341,39 @@ function isGroundingQuotaError(error: unknown): boolean {
   return false;
 }
 
+/**
+ * One round in function-calling mode: no response mimeType, no grounding tools
+ * (combined search+custom tools is a Preview feature per the plan) — the model
+ * must either call our verified functions or produce the final JSON contract.
+ */
+async function callToolRoundOnce(
+  apiKey: string,
+  model: string,
+  system: string,
+  contents: Content[],
+): Promise<ChatRoundResult> {
+  const ai = new GoogleGenAI({
+    apiKey,
+    httpOptions: { timeout: 120_000, retryOptions: { attempts: 1 } },
+  });
+  const response = await ai.models.generateContent({
+    model,
+    contents,
+    // Cast keeps the shared tooldefs (plain JSON) decoupled from @google/genai
+    // typings, which churn between versions; the shape is identical.
+    config: {
+      systemInstruction: system,
+      tools: [{ functionDeclarations: TOOL_DEFS as unknown as FunctionDeclaration[] }],
+    },
+  });
+  const calls = callsFromResponse(response.functionCalls);
+  // A text answer that arrives together with calls is dropped: the next round
+  // repeats it in the final turn, and sending both would break the contract.
+  if (calls.length) return { kind: "tool_calls", calls };
+  const payload = parseChatPayload(response.text ?? "");
+  return { kind: "final", payload };
+}
+
 /** Tries with grounding tools first; on quota/compatibility error, falls back to basic JSON mode. */
 async function callChatOnce(
   provider: "gemini" | "openai",
@@ -311,9 +439,11 @@ async function callChatOnce(
 
 /**
  * Multi-turn assistant chat with the user's own AI provider.
- * Gemini supports multi-turn + inline attachments (images/audio/pdf/video);
- * OpenAI-compatible providers accept text only. Rotates through the keys on
- * quota errors and returns the index of the key that worked.
+ * Two modes: a plain chat round (grounding + JSON contract) and a tool-loop
+ * round (`tools: true`, Gemini only) that may return tool calls instead.
+ * Rotates through the keys on quota errors and returns the index of the key
+ * that worked. Attachments are inline base64; OpenAI-compatible providers
+ * accept text only.
  */
 export const askChat = createServerFn({ method: "POST" })
   .validator((d) => Input.parse(d))
@@ -321,19 +451,26 @@ export const askChat = createServerFn({ method: "POST" })
     if (data.provider !== "gemini" && data.messages.some((m) => m.attachments?.length))
       throw new Error("Вложения поддерживаются только с провайдером Gemini.");
 
-    const { result: payload, keyIndex } = await withChatKeyFallback(
+    const contents =
+      data.tools && data.provider === "gemini"
+        ? roundContents(data.messages, data.rounds ?? [])
+        : undefined;
+
+    const { result: round, keyIndex } = await withChatKeyFallback(
       data.provider,
       data.baseUrl,
       data.keys,
       (key) =>
-        callChatOnce(
-          data.provider,
-          key,
-          data.baseUrl || undefined,
-          data.model,
-          data.system,
-          data.messages,
-        ),
+        data.tools && data.provider === "gemini" && contents
+          ? callToolRoundOnce(key, data.model, data.system, contents)
+          : callChatOnce(
+              data.provider,
+              key,
+              data.baseUrl || undefined,
+              data.model,
+              data.system,
+              data.messages,
+            ).then((payload): ChatRoundResult => ({ kind: "final", payload })),
     );
-    return { payload, keyIndex };
+    return { round, keyIndex };
   });

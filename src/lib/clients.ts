@@ -1,4 +1,5 @@
 import { aiSplitWorkout, askAi, pingAi } from "./ai.functions";
+import { youtubeKeyCheck } from "./youtube.functions";
 import { promoteKey } from "./ai-keys";
 import { fetchArticle } from "./article.functions";
 import type { ParsedArticleEx } from "./article";
@@ -82,6 +83,17 @@ export async function checkFfmpegKey(override?: string): Promise<string> {
   if (!key) throw new Error("Сначала вставьте ключ ffmpeg-api.com");
   const { ms } = await ffmpegPing({ data: { apiKey: key } });
   return `Ключ работает · ${ms} мс`;
+}
+
+/** Verifies the YouTube Data API key with a 1-unit videos.list call. */
+export async function checkYouTubeKey(override?: string): Promise<string> {
+  const ai = useApp.getState().ai;
+  const key = override || ai.youtubeKey || "";
+  if (!key) throw new Error("Сначала вставьте YouTube-ключ");
+  return timedLog("ai", "Проверка YouTube-ключа", async () => {
+    const { ms } = await youtubeKeyCheck({ data: { apiKey: key } });
+    return `YouTube-ключ работает · ${ms} мс`;
+  });
 }
 
 // ---------- AI ----------

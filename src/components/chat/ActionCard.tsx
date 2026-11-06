@@ -1,8 +1,9 @@
 import { applyAction } from "@/lib/chat/sanitize";
 import { useChat } from "@/lib/chat/store";
-import type { ChatAction, ChatMessage } from "@/lib/chat/types";
+import type { ChatAction, ChatMessage, ChatSnapshot } from "@/lib/chat/types";
 import { useApp } from "@/lib/store";
-import { Check, ChevronRight, X } from "lucide-react";
+import { LinkMedia } from "@/components/game/LinkMedia";
+import { Check, ChevronRight, Undo2, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -27,36 +28,94 @@ function details(a: ChatAction): string {
       .filter(Boolean);
     return (names as string[]).join(" · ");
   }
-  return a.summary.slice(a.summary.indexOf("—") + 1).trim();
+  const ex = a.payload as { videoUrl?: string };
+  const video = ex.videoUrl ? " · видео: сегмент с подтверждённой ссылкой" : "";
+  return a.summary.slice(a.summary.indexOf("—") + 1).trim() + video;
 }
 
 /**
- * Карточка одного proposed-действия. «always» подтверждения не требует —
- * применяется сразу отрисовщиком; здесь — ветки ask и уже применённые.
+ * Карточка одного proposed-действия: превью видео для упражнений, применить/
+ * отклонить и ОТМЕНИТЬ применённое (undo по снапшоту состояния наapply). «always»
+ * подтверждения не требует — применяется маршрутом; здесь — ветки ask и applied.
  */
 export function ActionCard({
   sessionId,
   message,
   action,
   index,
+  snapshot,
 }: {
   sessionId: string;
   message: ChatMessage;
   action: ChatAction;
   index: number;
+  snapshot?: ChatSnapshot | undefined;
 }) {
   const mark = useChat((s) => s.markAction);
+  const [busyI, setBusyI] = useState(false);
   // applied[index]: missing = not decided yet; null = dismissed; ISO string = applied.
   const state = message.applied?.[index];
   const decided = state !== undefined;
   const appliedIso = state ?? null;
-  const [busyI, setBusyI] = useState(false);
+  const exVideo =
+    action.kind === "create_exercise" || action.kind === "update_exercise"
+      ? (action.payload as { videoUrl?: string; clips?: { start: number; end: number }[] })
+      : null;
+
+  const patchSnap = (snap: ChatSnapshot) => {
+    const st = useChat.getState();
+    const cur = st.sessions
+      .find((c) => c.id === sessionId)
+      ?.messages.find((m) => m.id === message.id);
+    st.patchMessage(sessionId, message.id, {
+      snapshots: { ...(cur?.snapshots ?? {}), [index]: snap },
+    });
+  };
+  const snapFor = (): ChatSnapshot =>
+    useApp
+      .getState()
+      .captureSnapshot(
+        action.kind === "create_workout"
+          ? ["workouts"]
+          : action.kind === "add_plan_step"
+            ? ["plan"]
+            : ["exercises"],
+      );
+
+  const undo = () => {
+    setBusyI(true);
+    try {
+      if (snapshot && useApp.getState().restoreSnapshot(snapshot)) {
+        mark(sessionId, message.id, index, null);
+        toast.success("Изменение отменено");
+      } else {
+        toast.error("Не удалось восстановить состояние");
+      }
+    } finally {
+      setBusyI(false);
+    }
+  };
 
   if (appliedIso != null) {
     return (
-      <div className="flex items-center gap-2 rounded-xl bg-primary-soft px-3 py-2 text-sm font-semibold text-primary-shade">
-        <Check className="h-4 w-4 shrink-0" /> Применено
-        <span className="truncate">{KIND_VERB[action.kind]}</span>
+      <div className="rounded-2xl border-2 border-primary/30 bg-primary-soft p-3">
+        <div className="flex items-center gap-2 text-sm font-semibold text-primary-shade">
+          <Check className="h-4 w-4 shrink-0" /> Применено
+        </div>
+        <p className="mt-0.5 text-sm font-semibold">{action.summary}</p>
+        {exVideo?.videoUrl ? (
+          <div className="mt-2 aspect-video overflow-hidden rounded-xl bg-muted">
+            <LinkMedia url={exVideo.videoUrl} clips={exVideo.clips} controls autoplay={false} />
+          </div>
+        ) : null}
+        <button
+          type="button"
+          disabled={busyI || !snapshot}
+          onClick={undo}
+          className="press mt-2 flex min-h-[40px] w-full items-center justify-center gap-1.5 rounded-xl border-2 text-sm font-semibold text-muted-foreground hover:bg-muted disabled:opacity-50"
+        >
+          <Undo2 className="h-4 w-4" /> Отменить изменение
+        </button>
       </div>
     );
   }
@@ -66,11 +125,14 @@ export function ActionCard({
     setBusyI(true);
     if (!ok) {
       mark(sessionId, message.id, index, null);
+      setBusyI(false);
       return;
     }
+    const snap = snapFor();
     if (applyAction(action)) {
+      patchSnap(snap);
       mark(sessionId, message.id, index, new Date().toISOString());
-      toast.success(KIND_VERB[action.kind]);
+      toast.success("Изменение применено — можно отменить в этой карточке");
     } else {
       mark(sessionId, message.id, index, null);
       toast.error("Объект уже не существует — действие отменено");
@@ -86,6 +148,11 @@ export function ActionCard({
       </p>
       <p className="mt-1 text-sm font-semibold">{action.summary}</p>
       <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{details(action)}</p>
+      {exVideo?.videoUrl ? (
+        <div className="mt-2 aspect-video overflow-hidden rounded-xl bg-muted">
+          <LinkMedia url={exVideo.videoUrl} clips={exVideo.clips} controls autoplay={false} />
+        </div>
+      ) : null}
       <div className="mt-2.5 flex gap-2">
         <button
           type="button"

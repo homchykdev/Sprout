@@ -84,6 +84,16 @@ interface Actions {
   updateSession: (id: string, patch: Pick<SessionLog, "mood" | "note">) => void;
   importAll: (data: Partial<AppState>) => void;
   resetAll: () => void;
+  /** Chat undo: replaces full affected-domain arrays from the snapshot. */
+  restoreSnapshot: (
+    snap: { exercises?: Exercise[]; workouts?: Workout[]; planSteps?: PlanStep[] } | undefined,
+  ) => boolean;
+  /** Full affected-domain arrays for a chat snapshot, deep-copied. */
+  captureSnapshot: (domains: ("exercises" | "workouts" | "plan")[]) => {
+    exercises?: Exercise[];
+    workouts?: Workout[];
+    planSteps?: PlanStep[];
+  };
 }
 
 export const initialState: AppState = {
@@ -127,7 +137,7 @@ export const initialState: AppState = {
 
 export const useApp = create<AppState & Actions>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       ...initialState,
       set: (p) => set(p),
       upsertExercise: (e) =>
@@ -197,6 +207,26 @@ export const useApp = create<AppState & Actions>()(
         set((s) => ({ sessions: s.sessions.map((x) => (x.id === id ? { ...x, ...patch } : x)) })),
       importAll: (data) => set({ ...initialState, ...migrateState(data, 1) }),
       resetAll: () => set(initialState),
+      captureSnapshot: (domains) => {
+        const s = get();
+        const snap: { exercises?: Exercise[]; workouts?: Workout[]; planSteps?: PlanStep[] } = {};
+        const clone = <T>(v: T): T => structuredClone(v);
+        if (domains.includes("exercises")) snap.exercises = s.exercises.map(clone);
+        if (domains.includes("workouts")) snap.workouts = s.workouts.map(clone);
+        if (domains.includes("plan")) snap.planSteps = s.plan.steps.map(clone);
+        return snap;
+      },
+      restoreSnapshot: (snap) => {
+        if (!snap) return false;
+        const has = snap.exercises || snap.workouts || snap.planSteps;
+        if (!has) return false;
+        set((s) => ({
+          ...(snap.exercises ? { exercises: snap.exercises } : {}),
+          ...(snap.workouts ? { workouts: snap.workouts } : {}),
+          ...(snap.planSteps ? { plan: { ...s.plan, steps: snap.planSteps } } : {}),
+        }));
+        return true;
+      },
     }),
     {
       name: "pulse-fit-v1",

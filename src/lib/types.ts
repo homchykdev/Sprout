@@ -96,6 +96,8 @@ export interface AiSettings {
   keys: string[];
   baseUrl: string;
   model: string;
+  /** YouTube Data API key (free, Google Cloud Console) — enables verified video search. */
+  youtubeKey?: string;
 }
 
 export interface Vacation {
