@@ -16,20 +16,56 @@ function source(uri: string | undefined, title?: string): ChatSource | null {
   }
 }
 
-/** Returns only HTTPS URLs explicitly returned by Google Search grounding metadata. */
+/** Returns HTTPS URLs from Google Search grounding and verified YouTube URLs from URL Context. */
 export function extractGroundedSources(candidate: Candidate | undefined): ChatSource[] {
   if (!candidate) return [];
 
+  const sources: ChatSource[] = [];
+
+  // Google Search grounding sources
   const groundingSources =
     candidate.groundingMetadata?.groundingChunks?.flatMap((chunk) => {
       const item = source(chunk.web?.uri, chunk.web?.title);
       return item ? [item] : [];
     }) ?? [];
 
-  const unique = new Map<string, ChatSource>();
   for (const item of groundingSources) {
-    if (!unique.has(item.url)) unique.set(item.url, item);
-    if (unique.size === MAX_SOURCES) break;
+    if (!sources.some((s) => s.url === item.url)) {
+      sources.push(item);
+    }
+    if (sources.length === MAX_SOURCES) break;
   }
-  return [...unique.values()];
+
+  // URL Context verified sources (e.g., YouTube URLs the model was given and verified)
+  // Use type assertion since SDK types may not include urlContextMetadata yet
+  if (sources.length < MAX_SOURCES) {
+    const gm = candidate.groundingMetadata as
+      | {
+          urlContextMetadata?: {
+            urlMetadata?: Array<{
+              retrievedUrl?: string;
+              title?: string;
+              urlRetrievalStatus?: string;
+            }>;
+          };
+        }
+      | undefined;
+
+    const urlContextSources =
+      gm?.urlContextMetadata?.urlMetadata
+        ?.filter((m) => m.urlRetrievalStatus === "URL_RETRIEVAL_STATUS_SUCCESS")
+        .flatMap((m) => {
+          const item = source(m.retrievedUrl, m.title);
+          return item ? [item] : [];
+        }) ?? [];
+
+    for (const item of urlContextSources) {
+      if (!sources.some((s) => s.url === item.url)) {
+        sources.push(item);
+      }
+      if (sources.length === MAX_SOURCES) break;
+    }
+  }
+
+  return sources;
 }

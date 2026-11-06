@@ -19,6 +19,8 @@ interface PayloadJson {
   steps?: unknown;
   mistakes?: unknown;
   emoji?: unknown;
+  videoUrl?: unknown;
+  clips?: unknown;
   items?: unknown;
   exerciseId?: unknown;
   sets?: unknown;
@@ -51,6 +53,42 @@ function sanitizeExerciseLike(j: PayloadJson, base?: Exercise): Exercise | null 
       : (base?.category ?? "strength");
   const mode = j.mode === "time" ? "time" : j.mode === "reps" ? "reps" : (base?.mode ?? "reps");
   const emojiRaw = typeof j.emoji === "string" ? Array.from(j.emoji.trim())[0] : undefined;
+
+  // Validate YouTube URL
+  const videoUrlRaw = typeof j.videoUrl === "string" ? j.videoUrl.trim() : "";
+  let videoUrl: string | undefined;
+  if (videoUrlRaw) {
+    try {
+      const url = new URL(videoUrlRaw);
+      if (
+        url.protocol === "https:" &&
+        (url.hostname === "www.youtube.com" ||
+          url.hostname === "youtube.com" ||
+          url.hostname === "youtu.be") &&
+        !url.username &&
+        !url.password
+      ) {
+        videoUrl = videoUrlRaw;
+      }
+    } catch {
+      // invalid URL, ignore
+    }
+  }
+
+  // Validate clips: array of {start, end} with end > start >= 0
+  const clipsRaw = Array.isArray(j.clips) ? j.clips : [];
+  const clips = clipsRaw
+    .map((c) => {
+      if (typeof c !== "object" || c === null) return null;
+      const start = typeof c.start === "number" ? c.start : Number(c.start);
+      const end = typeof c.end === "number" ? c.end : Number(c.end);
+      if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+      if (start < 0 || end <= start) return null;
+      return { start, end };
+    })
+    .filter((c): c is { start: number; end: number } => c !== null)
+    .slice(0, 10); // cap at 10 clips
+
   const ex: Exercise = {
     id: base?.id ?? `ai-${uid()}`,
     name,
@@ -66,8 +104,8 @@ function sanitizeExerciseLike(j: PayloadJson, base?: Exercise): Exercise | null 
       .map((s) => str(s, "", 500))
       .filter(Boolean),
     emoji: emojiRaw ?? base?.emoji,
-    videoUrl: base?.videoUrl,
-    clips: base?.clips,
+    videoUrl: videoUrl ?? base?.videoUrl,
+    clips: clips.length ? clips : base?.clips,
     bpm: base?.bpm,
     mediaId: base?.mediaId,
     feedback: base?.feedback,

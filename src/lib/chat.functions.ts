@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { GoogleGenAI, type Content } from "@google/genai";
 import { z } from "zod";
 import { normalizeAiContent } from "./ai-content";
-import { mapHttpError } from "./ai.functions";
+import { mapHttpError, statusOf } from "./ai.functions";
 import { extractGroundedSources } from "./chat/grounding";
 import type { ChatSource } from "./chat/types";
 
@@ -157,8 +157,19 @@ export async function withChatKeyFallback<T>(
     try {
       return { result: await call(keys[i]!), keyIndex: i };
     } catch (error) {
+      const status = statusOf(error);
+      if (status === null || (status !== 429 && status < 500)) {
+        // Auth errors (401/403), invalid keys and other non-retryable failures
+        // will not get better on the next key: fail fast with the original error.
+        throw error;
+      }
+      // Retryable (429 quota / 5xx): record and try the next key.
       failures.push({ keyIndex: i, key: keys[i]!, error });
     }
+  }
+  if (failures.length === 1) {
+    // A single exhausted key reads better as the unformatted upstream error.
+    throw failures[0]!.error;
   }
   throw formatChatKeyFailures(provider, baseUrl, keys, failures);
 }
@@ -223,6 +234,19 @@ export function parseChatPayload(content: unknown): ChatPayload {
   throw new Error("ИИ вернул ответ в неожиданном формате. Попробуйте ещё раз.");
 }
 
+/** Checks if an error indicates grounding tools are unavailable or quota-exhausted for them. */
+function isGroundingQuotaError(error: unknown): boolean {
+  const status = statusOf(error);
+  if (status === 429) return true;
+  // Some models return 400 for unsupported tools/config
+  if (status === 400) {
+    const msg = error instanceof Error ? error.message : "";
+    return /grounding|tool|search|url.?context|not supported|invalid.?config/i.test(msg);
+  }
+  return false;
+}
+
+/** Tries with grounding tools first; on quota/compatibility error, falls back to basic JSON mode. */
 async function callChatOnce(
   provider: "gemini" | "openai",
   apiKey: string,
@@ -236,17 +260,35 @@ async function callChatOnce(
       apiKey,
       httpOptions: { timeout: 120_000, retryOptions: { attempts: 1 } },
     });
-    const response = await ai.models.generateContent({
-      model,
-      contents: toGeminiContents(messages),
-      config: {
-        systemInstruction: system,
-        tools: [{ googleSearch: {} }, { urlContext: {} }],
-      },
-    });
-    const payload = parseChatPayload(response.text ?? "");
-    const sources = extractGroundedSources(response.candidates?.[0]);
-    return sources.length ? { ...payload, sources } : payload;
+
+    // Attempt 1: with grounding tools (Google Search + URL Context)
+    try {
+      const response = await ai.models.generateContent({
+        model,
+        contents: toGeminiContents(messages),
+        config: {
+          systemInstruction: system,
+          tools: [{ googleSearch: {} }, { urlContext: {} }],
+        },
+      });
+      const payload = parseChatPayload(response.text ?? "");
+      const sources = extractGroundedSources(response.candidates?.[0]);
+      return sources.length ? { ...payload, sources } : payload;
+    } catch (groundingError) {
+      // Attempt 2: fallback to basic JSON mode (no tools) if grounding failed due to quota/compatibility
+      if (isGroundingQuotaError(groundingError)) {
+        const response = await ai.models.generateContent({
+          model,
+          contents: toGeminiContents(messages),
+          config: {
+            systemInstruction: system,
+            responseMimeType: "application/json",
+          },
+        });
+        return parseChatPayload(response.text ?? "");
+      }
+      throw groundingError;
+    }
   }
   const base = (baseUrl || "https://api.openai.com/v1").replace(/\/$/, "");
   const res = await fetch(`${base}/chat/completions`, {

@@ -292,7 +292,19 @@ describe("chat key error diagnostics", () => {
     ]);
   });
 
-  it("tries the next key after an error without an HTTP status", async () => {
+  it("fails fast on error without HTTP status (non-retryable)", async () => {
+    const attempted: string[] = [];
+    await expect(
+      withChatKeyFallback("gemini", undefined, ["first-key", "second-key"], async (key) => {
+        attempted.push(key);
+        if (key === "first-key") throw new Error("unexpected model response");
+        return "success";
+      }),
+    ).rejects.toThrow("unexpected model response");
+    expect(attempted).toEqual(["first-key"]);
+  });
+
+  it("rotates keys on 429 quota error", async () => {
     const attempted: string[] = [];
     const result = await withChatKeyFallback(
       "gemini",
@@ -300,24 +312,42 @@ describe("chat key error diagnostics", () => {
       ["first-key", "second-key"],
       async (key) => {
         attempted.push(key);
-        if (key === "first-key") throw new Error("unexpected model response");
+        if (key === "first-key") throw Object.assign(new Error("quota"), { status: 429 });
         return "success";
       },
     );
-
     expect(attempted).toEqual(["first-key", "second-key"]);
     expect(result).toEqual({ result: "success", keyIndex: 1 });
   });
 
-  it("reports all attempted key errors when none succeed", async () => {
-    let attempts = 0;
+  it("fails fast on 401 auth error (does not rotate)", async () => {
+    const attempted: string[] = [];
     await expect(
-      withChatKeyFallback("gemini", undefined, ["first-key", "second-key"], async () => {
-        attempts++;
-        throw new Error("request failed");
+      withChatKeyFallback("gemini", undefined, ["first-key", "second-key"], async (key) => {
+        attempted.push(key);
+        throw Object.assign(new Error("invalid key"), { status: 401 });
       }),
-    ).rejects.toThrow("ключ 2/2 (••••-key): request failed");
-    expect(attempts).toBe(2);
+    ).rejects.toThrow("invalid key");
+    expect(attempted).toEqual(["first-key"]);
+  });
+
+  it("reports attempted keys when all fail with retryable quota errors", async () => {
+    const attempted: string[] = [];
+    await expect(
+      withChatKeyFallback("gemini", undefined, ["first-key", "second-key"], async (key) => {
+        attempted.push(key);
+        throw Object.assign(new Error("quota"), { status: 429 });
+      }),
+    ).rejects.toThrow(/ключ 2\/2/);
+    expect(attempted).toEqual(["first-key", "second-key"]);
+  });
+
+  it("keeps the raw upstream error when the only key runs out of quota", async () => {
+    await expect(
+      withChatKeyFallback("gemini", undefined, ["only-key"], async () => {
+        throw Object.assign(new Error("quota"), { status: 429 });
+      }),
+    ).rejects.toThrow("quota");
   });
 
   it("reports the provider and attempted key numbers without revealing secrets", () => {

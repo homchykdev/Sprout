@@ -95,8 +95,8 @@ export function buildSystemPrompt(
     "- memory — НЕобязательно: learn — новые устойчивые факты о пользователе (короткие фразы, максимум по делу), forget — факты, которые пользователь просил забыть (дословно из списка ниже).",
     "",
     "СХЕМЫ actions:",
-    '- create_exercise: {"name", "muscles" (ключи из списка ниже), "category" ("strength"|"cardio"|"stretch"), "mode" ("reps"|"time"), "reps", "seconds", "equipment", "description", "steps" (string[]), "mistakes" (string[]), "emoji" (1 эмодзи)}',
-    '- update_exercise: {"id", "name", "muscles", "category", "mode", "reps", "seconds", "equipment", "description", "steps", "mistakes", "emoji"} — id бери из библиотеки ниже; меняй только то, что просил пользователь, остальное копируй из текущего упражнения.',
+    '- create_exercise: {"name", "muscles" (ключи из списка ниже), "category" ("strength"|"cardio"|"stretch"), "mode" ("reps"|"time"), "reps", "seconds", "equipment", "description", "steps" (string[]), "mistakes" (string[]), "emoji" (1 эмодзи), "videoUrl" (YouTube URL, опционально), "clips" (YouTube сегменты: [{start, end}], опционально)}',
+    '- update_exercise: {"id", "name", "muscles", "category", "mode", "reps", "seconds", "equipment", "description", "steps", "mistakes", "emoji", "videoUrl"?, "clips"?} — id бери из библиотеки ниже; меняй только то, что просил пользователь, остальное копируй из текущего упражнения.',
     '- create_workout: {"name", "emoji", "items": [{"exerciseId", "sets", "reps", "seconds", "rest"}]} — exerciseId из библиотеки; rest в секундах (сила 45–90, кардио/растяжка 20–40).',
     '- add_plan_step: {"afterIndex", "step": {"kind": "workout"|"rest", "workoutId"?}} — afterIndex — индекс в цикле, после которого вставить (-1 — в начало); workoutId обязателен при kind="workout".',
     "",
@@ -117,6 +117,7 @@ export function buildSystemPrompt(
     "- Перед ответом проверь, что ссылка взята из источников текущего запроса, а не из памяти. Не заявляй, что видео просмотрено, если инструмент не подтвердил доступ к его содержимому.",
     "- Если уверенность в факте или ссылке ниже полной, явно обозначь неопределённость и предложи точный поисковый запрос вместо выдуманного URL.",
     "- Не отказывай автоматически в работе с публичной ссылкой или видео: попробуй доступные инструменты, затем честно опиши, что именно удалось проверить. Не подменяй вопрос предложением создать упражнение.",
+    '- Для видео с YouTube: используй Google Search с запросом вида "[название упражнения] YouTube выполнение технику" или "[название упражнения] site:youtube.com". Найденные YouTube URL проверяй через URL Context — если видео недоступно (приватное, удалено, ограничение по возрасту), не включай его в videoUrl.',
     webGrounding
       ? "- Доступны Google Search и URL context. Используй поиск для актуальных/внешних фактов и URL context для предоставленных публичных ссылок. Ссылайся только на полученные источники; если поиск или извлечение не сработали — скажи об этом."
       : "- В этом чате веб-поиск и URL context недоступны. Не утверждай, что проверил интернет, и не выдавай ссылки или актуальные внешние факты за подтверждённые; сообщи об ограничении и предложи поисковый запрос.",
