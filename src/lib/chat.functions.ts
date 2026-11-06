@@ -361,9 +361,11 @@ async function callToolRoundOnce(
     contents,
     // Cast keeps the shared tooldefs (plain JSON) decoupled from @google/genai
     // typings, which churn between versions; the shape is identical.
+    // Disable thinking to avoid missing thought_signature requirement for function calls.
     config: {
       systemInstruction: system,
       tools: [{ functionDeclarations: TOOL_DEFS as unknown as FunctionDeclaration[] }],
+      thinkingConfig: { thinkingBudget: 0 },
     },
   });
   const calls = callsFromResponse(response.functionCalls);
