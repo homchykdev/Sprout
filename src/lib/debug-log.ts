@@ -92,8 +92,7 @@ export function exportDebugLogs(): string {
   restore();
   const header = `Sprout Debug Log · ${new Date().toISOString()} · entries: ${buffer.length}`;
   const lines = buffer.map(
-    (e) =>
-      `${new Date(e.ts).toISOString()} [${e.level.toUpperCase()}] ${formatArgs(e.args)}`
+    (e) => `${new Date(e.ts).toISOString()} [${e.level.toUpperCase()}] ${formatArgs(e.args)}`,
   );
   return [header, ...lines].join("\n");
 }

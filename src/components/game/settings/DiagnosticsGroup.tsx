@@ -1,5 +1,15 @@
 import { useEffect, useState } from "react";
-import { Copy, Download, RefreshCw, Share2, Trash2, CheckCircle, XCircle, AlertTriangle, Loader2 } from "lucide-react";
+import {
+  Copy,
+  Download,
+  RefreshCw,
+  Share2,
+  Trash2,
+  CheckCircle,
+  XCircle,
+  AlertTriangle,
+  Loader2,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Capacitor } from "@capacitor/core";
 import { LocalNotifications } from "@capacitor/local-notifications";
@@ -10,10 +20,22 @@ import { ScreenOrientation } from "@capacitor/screen-orientation";
 import { Motion } from "@capacitor/motion";
 import { Switch } from "@/components/ui/switch";
 import { TapButton } from "@/components/game/TapButton";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { SectionCard } from "./SectionCard";
-import { exportDebugLogs, getDebugLogs, clearDebugLogs, installDebugLog, getDebugLogStatus } from "@/lib/debug-log";
+import {
+  exportDebugLogs,
+  getDebugLogs,
+  clearDebugLogs,
+  installDebugLog,
+  getDebugLogStatus,
+} from "@/lib/debug-log";
 import { cn } from "@/lib/utils";
 
 const time = (ts: number) =>
@@ -43,7 +65,7 @@ interface PendingNotification {
   id: number;
   title: string;
   body: string;
-  schedule?: { at: string | Date };
+  schedule?: { at?: string | Date | undefined } | undefined;
 }
 
 export function DiagnosticsGroup() {
@@ -60,7 +82,11 @@ export function DiagnosticsGroup() {
   const [pendingNotifs, setPendingNotifs] = useState<PendingNotification[]>([]);
   const [testNotifLoading, setTestNotifLoading] = useState(false);
   // TTS
-  const [ttsInfo, setTtsInfo] = useState<{ webVoices: number; nativeVoices: number; nativeVoicesList: string[] }>({
+  const [ttsInfo, setTtsInfo] = useState<{
+    webVoices: number;
+    nativeVoices: number;
+    nativeVoicesList: string[];
+  }>({
     webVoices: 0,
     nativeVoices: 0,
     nativeVoicesList: [],
@@ -83,7 +109,11 @@ export function DiagnosticsGroup() {
   });
   const [cameraLoading, setCameraLoading] = useState(false);
   // Motion
-  const [motionInfo, setMotionInfo] = useState<{ accelerometer: boolean; orientation: boolean; error: string | null }>({
+  const [motionInfo, setMotionInfo] = useState<{
+    accelerometer: boolean;
+    orientation: boolean;
+    error: string | null;
+  }>({
     accelerometer: false,
     orientation: false,
     error: null,
@@ -170,7 +200,9 @@ export function DiagnosticsGroup() {
     // Web voices
     let webVoices = 0;
     if (typeof speechSynthesis !== "undefined") {
-      webVoices = speechSynthesis.getVoices().filter((v) => v.lang.toLowerCase().startsWith("ru")).length;
+      webVoices = speechSynthesis
+        .getVoices()
+        .filter((v) => v.lang.toLowerCase().startsWith("ru")).length;
     }
 
     // Native voices
@@ -179,10 +211,15 @@ export function DiagnosticsGroup() {
     if (Capacitor.isNativePlatform()) {
       try {
         const result = await TextToSpeech.getSupportedVoices();
-        nativeVoices = result.voices.filter((v: { lang: string }) => v.lang.toLowerCase().startsWith("ru")).length;
+        nativeVoices = result.voices.filter((v: { lang: string }) =>
+          v.lang.toLowerCase().startsWith("ru"),
+        ).length;
         nativeVoicesList = result.voices
           .filter((v: { lang: string }) => v.lang.toLowerCase().startsWith("ru"))
-          .map((v: { name: string; lang: string; voiceURI: string }) => `${v.name} (${v.lang}) [${v.voiceURI}]`);
+          .map(
+            (v: { name: string; lang: string; voiceURI: string }) =>
+              `${v.name} (${v.lang}) [${v.voiceURI}]`,
+          );
       } catch (e) {
         console.error("Failed to load native TTS voices", e);
       }
@@ -197,7 +234,7 @@ export function DiagnosticsGroup() {
     let lockSupported = false;
     if (Capacitor.isNativePlatform()) {
       try {
-        const orientations = await ScreenOrientation.orientations();
+        await ScreenOrientation.orientation();
         lockSupported = true;
         setScreenOrientationInfo({ type, angle, lockSupported });
         return;
@@ -386,12 +423,22 @@ export function DiagnosticsGroup() {
           <div>
             <p className="font-medium">Журнал отладки</p>
             <p className="text-sm text-muted-foreground">
-              записей: <b className="tabular text-foreground">{logs.length} / {status.bufferSize}</b>
-              {last && <>{" "}· последняя <b className="tabular text-foreground">{time(last.ts)}</b></>}
-              {" "}· установлен: <b className={status.installed ? "text-green-600" : "text-red-600"}>
-                {status.installed ? "да" : "нет"}
+              записей:{" "}
+              <b className="tabular text-foreground">
+                {logs.length} / {status.bufferSize}
               </b>
-              {" "}· восстановлен: <b className={status.restored ? "text-green-600" : "text-red-600"}>
+              {last && (
+                <>
+                  {" "}
+                  · последняя <b className="tabular text-foreground">{time(last.ts)}</b>
+                </>
+              )}{" "}
+              · установлен:{" "}
+              <b className={status.installed ? "text-green-600" : "text-red-600"}>
+                {status.installed ? "да" : "нет"}
+              </b>{" "}
+              · восстановлен:{" "}
+              <b className={status.restored ? "text-green-600" : "text-red-600"}>
                 {status.restored ? "да" : "нет"}
               </b>
             </p>
@@ -403,7 +450,12 @@ export function DiagnosticsGroup() {
             <TapButton variant="soft" size="sm" className="min-h-[44px]" onClick={copyLogs}>
               <Copy className="h-4 w-4" /> {copySuccess ? "Скопировано!" : "Копировать"}
             </TapButton>
-            <TapButton variant="soft" size="sm" className="min-h-[44px] text-destructive" onClick={() => setConfirmClear(true)}>
+            <TapButton
+              variant="soft"
+              size="sm"
+              className="min-h-[44px] text-destructive"
+              onClick={() => setConfirmClear(true)}
+            >
               <Trash2 className="h-4 w-4" /> Очистить
             </TapButton>
           </div>
@@ -422,13 +474,17 @@ export function DiagnosticsGroup() {
                   <div key={`${e.ts}-${i}`} className="rounded-xl bg-muted p-2">
                     <div className="flex items-center gap-2">
                       {levelIcon[e.level]}
-                      <span className={`font-bold ${levelColor[e.level]}`}>[{e.level.toUpperCase()}]</span>
+                      <span className={`font-bold ${levelColor[e.level]}`}>
+                        [{e.level.toUpperCase()}]
+                      </span>
                       <span className="text-muted-foreground tabular">{time(e.ts)}</span>
                     </div>
                     <p className="mt-1 break-words">{e.args.map((a) => String(a)).join(" ")}</p>
                   </div>
                 ))}
-              {logs.length === 0 && <p className="text-center text-muted-foreground py-8">Журнал пуст</p>}
+              {logs.length === 0 && (
+                <p className="text-center text-muted-foreground py-8">Журнал пуст</p>
+              )}
             </div>
           </DialogContent>
         </Dialog>
@@ -448,7 +504,9 @@ export function DiagnosticsGroup() {
             <DialogHeader>
               <DialogTitle>Очистить журнал?</DialogTitle>
             </DialogHeader>
-            <p className="text-sm text-muted-foreground">Все {logs.length} записей будут удалены безвозвратно.</p>
+            <p className="text-sm text-muted-foreground">
+              Все {logs.length} записей будут удалены безвозвратно.
+            </p>
             <TapButton variant="soft" className="w-full text-destructive" onClick={clearLogs}>
               Удалить журнал
             </TapButton>
@@ -474,7 +532,10 @@ export function DiagnosticsGroup() {
       {/* Notifications */}
       <div className="border-t border-border pt-4 space-y-3">
         <h3 className="font-semibold flex items-center gap-2">
-          <RefreshCw className="h-4 w-4" onClick={loadNotificationStatus} className="cursor-pointer hover:opacity-70" />
+          <RefreshCw
+            onClick={loadNotificationStatus}
+            className="h-4 w-4 cursor-pointer hover:opacity-70"
+          />
           Уведомления
         </h3>
         <div className="grid gap-2 sm:grid-cols-2 text-sm">
@@ -497,7 +558,7 @@ export function DiagnosticsGroup() {
                   <span>{n.title}</span>
                   <span className="text-white/50">—</span>
                   <span>{n.body}</span>
-                  {n.schedule && (
+                  {n.schedule?.at && (
                     <span className="text-white/40 ml-auto">
                       @ {new Date(n.schedule.at).toLocaleString()}
                     </span>
@@ -514,17 +575,23 @@ export function DiagnosticsGroup() {
           onClick={handleTestNotification}
           disabled={testNotifLoading || !Capacitor.isNativePlatform()}
         >
-          {testNotifLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <span>Тестовое уведомление через 1 мин</span>}
+          {testNotifLoading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <span>Тестовое уведомление через 1 мин</span>
+          )}
         </TapButton>
         {!Capacitor.isNativePlatform() && (
-          <p className="text-xs text-muted-foreground">Доступно только в нативной сборке (Capacitor)</p>
+          <p className="text-xs text-muted-foreground">
+            Доступно только в нативной сборке (Capacitor)
+          </p>
         )}
       </div>
 
       {/* TTS */}
       <div className="border-t border-border pt-4 space-y-3">
         <h3 className="font-semibold flex items-center gap-2">
-          <RefreshCw className="h-4 w-4" onClick={loadTTSInfo} className="cursor-pointer hover:opacity-70" />
+          <RefreshCw onClick={loadTTSInfo} className="h-4 w-4 cursor-pointer hover:opacity-70" />
           TTS (речь)
         </h3>
         <div className="grid gap-2 sm:grid-cols-3 text-sm">
@@ -556,7 +623,10 @@ export function DiagnosticsGroup() {
       {/* Camera */}
       <div className="border-t border-border pt-4 space-y-3">
         <h3 className="font-semibold flex items-center gap-2">
-          <RefreshCw className="h-4 w-4" onClick={handleTestCamera} className="cursor-pointer hover:opacity-70" />
+          <RefreshCw
+            onClick={handleTestCamera}
+            className="h-4 w-4 cursor-pointer hover:opacity-70"
+          />
           Камера
         </h3>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 text-sm">
@@ -575,7 +645,9 @@ export function DiagnosticsGroup() {
           <div className="rounded-xl bg-muted p-3">
             <p className="text-muted-foreground">preview (CSS)</p>
             <p className="font-mono text-foreground">
-              {cameraInfo.previewSize ? `${cameraInfo.previewSize.width}x${cameraInfo.previewSize.height}` : "—"}
+              {cameraInfo.previewSize
+                ? `${cameraInfo.previewSize.width}x${cameraInfo.previewSize.height}`
+                : "—"}
             </p>
           </div>
         </div>
@@ -604,31 +676,46 @@ export function DiagnosticsGroup() {
           onClick={handleTestCamera}
           disabled={cameraLoading || !Capacitor.isNativePlatform()}
         >
-          {cameraLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <span>Проверить камеру (Capacitor Camera)</span>}
+          {cameraLoading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <span>Проверить камеру (Capacitor Camera)</span>
+          )}
         </TapButton>
         {!Capacitor.isNativePlatform() && (
-          <p className="text-xs text-muted-foreground">Capacitor Camera plugin требует нативной сборки</p>
+          <p className="text-xs text-muted-foreground">
+            Capacitor Camera plugin требует нативной сборки
+          </p>
         )}
       </div>
 
       {/* Motion Sensors */}
       <div className="border-t border-border pt-4 space-y-3">
         <h3 className="font-semibold flex items-center gap-2">
-          <RefreshCw className="h-4 w-4" onClick={handleTestMotion} className="cursor-pointer hover:opacity-70" />
+          <RefreshCw
+            onClick={handleTestMotion}
+            className="h-4 w-4 cursor-pointer hover:opacity-70"
+          />
           Датчики движения (@capacitor/motion)
         </h3>
         <div className="grid gap-2 sm:grid-cols-3 text-sm">
           <div className="rounded-xl bg-muted p-3">
             <p className="text-muted-foreground">Accelerometer</p>
-            <p className="font-mono text-foreground">{motionInfo.accelerometer ? "✓ доступен" : "✗ нет"}</p>
+            <p className="font-mono text-foreground">
+              {motionInfo.accelerometer ? "✓ доступен" : "✗ нет"}
+            </p>
           </div>
           <div className="rounded-xl bg-muted p-3">
             <p className="text-muted-foreground">Orientation</p>
-            <p className="font-mono text-foreground">{motionInfo.orientation ? "✓ доступен" : "✗ нет"}</p>
+            <p className="font-mono text-foreground">
+              {motionInfo.orientation ? "✓ доступен" : "✗ нет"}
+            </p>
           </div>
           <div className="rounded-xl bg-muted p-3">
             <p className="text-muted-foreground">Web API (DeviceMotionEvent)</p>
-            <p className="font-mono text-foreground">{typeof DeviceMotionEvent !== "undefined" ? "✓" : "✗"}</p>
+            <p className="font-mono text-foreground">
+              {typeof DeviceMotionEvent !== "undefined" ? "✓" : "✗"}
+            </p>
           </div>
         </div>
         {motionInfo.error && (
@@ -643,7 +730,11 @@ export function DiagnosticsGroup() {
           onClick={handleTestMotion}
           disabled={motionLoading || !Capacitor.isNativePlatform()}
         >
-          {motionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <span>Проверить датчики</span>}
+          {motionLoading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <span>Проверить датчики</span>
+          )}
         </TapButton>
         {!Capacitor.isNativePlatform() && (
           <p className="text-xs text-muted-foreground">Доступно только в нативной сборке</p>
@@ -653,7 +744,10 @@ export function DiagnosticsGroup() {
       {/* Screen Orientation */}
       <div className="border-t border-border pt-4 space-y-3">
         <h3 className="font-semibold flex items-center gap-2">
-          <RefreshCw className="h-4 w-4" onClick={loadScreenOrientation} className="cursor-pointer hover:opacity-70" />
+          <RefreshCw
+            onClick={loadScreenOrientation}
+            className="h-4 w-4 cursor-pointer hover:opacity-70"
+          />
           Ориентация экрана (@capacitor/screen-orientation)
         </h3>
         <div className="grid gap-2 sm:grid-cols-3 text-sm">
@@ -667,7 +761,9 @@ export function DiagnosticsGroup() {
           </div>
           <div className="rounded-xl bg-muted p-3">
             <p className="text-muted-foreground">Lock supported (native)</p>
-            <p className="font-mono text-foreground">{String(screenOrientationInfo.lockSupported)}</p>
+            <p className="font-mono text-foreground">
+              {String(screenOrientationInfo.lockSupported)}
+            </p>
           </div>
         </div>
       </div>
