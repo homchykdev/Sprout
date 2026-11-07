@@ -67,13 +67,13 @@ export function GoalGrid({
   const sensors = useSensors(
     useSensor(MouseSensor, {
       activationConstraint: {
-        delay: 600,
+        delay: 350,
         tolerance: 8,
       },
     }),
     useSensor(TouchSensor, {
       activationConstraint: {
-        delay: 600,
+        delay: 350,
         tolerance: 8,
       },
     }),
