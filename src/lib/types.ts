@@ -49,6 +49,13 @@ export interface Exercise {
   clips?: { start: number; end: number }[] | undefined;
   /** Metronome tempo for this exercise, beats/min; absent = off. */
   bpm?: number | undefined;
+  /**
+   * Tapped rhythm pattern (rhythm tempo mode): ms between consecutive beats,
+   * e.g. [200, 200, 1000]. The first beat of every loop is accented. The pattern
+   * loops until the set ends or the user moves to the next exercise.
+   * Present only in rhythm mode (bpm is cleared in that case).
+   */
+  rhythm?: number[] | undefined;
   /** User-uploaded photo/video stored on device (media.ts). */
   mediaId?: string | undefined;
   emoji?: string | undefined;
@@ -65,6 +72,11 @@ export interface WorkoutItem {
   rest: number;
   /** Tempo for this workout (beats/min). Falls back to the exercise's recommended bpm. */
   bpm?: number | undefined;
+  /**
+   * Tapped rhythm pattern override for this workout (ms between beats).
+   * Cleared/absent — falls back to the exercise's rhythm, then to its bpm.
+   */
+  rhythm?: number[] | undefined;
 }
 
 export interface Workout {

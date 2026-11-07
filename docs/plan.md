@@ -1,62 +1,115 @@
-# Plan: Drag-and-Drop Reordering for Target Physique Photos («Цели фигуры»)
+# Plan: Tap-Tempo Rhythm Pattern per Exercise («Настучать ритм»)
 
 ## User Request
-Сделать, чтобы фото целевых фигур можно было менять местами и перетаскивать (Draggable photos).
+Добавить к метроному второй режим темпа: пользователь настукивает ритм пальцем (интервалы, напр. 0.2 / 0.2 / 1 с), паттерн записывается и затем зацикленно проигрывается во время выполнения упражнения (каждое повторение / всё время сета), пока не закончится время или не перейдёт к следующему упражнению.
 
-## 1. Context & Architecture
-- Photos and videos for the "Цели фигуры" (album `goal`) are stored in IndexedDB (`pulse-media` store) via `src/lib/media.ts`.
-- The gallery route `src/routes/gallery.tsx` currently renders `GoalCell` items in a static 2-column grid (`grid grid-cols-2 gap-3`), sorted by date/time.
-- The project already has `@dnd-kit/core`, `@dnd-kit/sortable`, and `@dnd-kit/utilities` installed (used in `PlanEditor.tsx`).
-- Existing photo card interactions:
-  - Single tap: open in lightbox (or toggle checkbox if multi-selecting).
-  - Long-press: enter multi-select mode (`useLongPress`).
-  - Top-right «···» menu: edit note/title or delete.
-  - Page scroll: vertical scrolling on mobile (`touch-action: pan-y`).
+## User Decisions
+- Ритм **вместо** bpm: в редакторе выбирается один из двух режимов темпа (метроном или ритм).
+- Запись только в редакторе упражнения (библиотека).
+- Записываем **сырые интервалы мс, без квантования**.
+- **Правка №2:** пользователь настучит **несколько повторов цикла** подряд — алгоритм
+  распознаёт периодичность (детектор периода по последовательности межтаповых
+  интервалов) и усредняет интервалы по циклам, снижая шум пальца. Если распозналось
+  неверно — **каждый интервал правится вручную в мс** (список number-inputs + add/remove).
+- Предотвращение ошибок: дребезг (<45 мс) склеивается; лимиты 60–5000 мс и ≤32
+  интервалов; при низкой уверенности детектора — жёлтый варнинг «проверь / простучи
+  ещё цикл»; звук-превью до сохранения; валидация на границах ввода.
+- **Первый удар цикла — акцентный** (громче/иначе по звуку).
 
-## 2. Steps
+## Context (current state)
+- `Exercise.bpm?` в `src/lib/types.ts` (L51), per-item override `WorkoutItem.bpm?` (L67).
+- Воспроизведение: `play.$workoutId.tsx` (L106–113) — `setInterval(() => beep("metro"), 60000/bpm)`, гейтится `phase === "work"`, `v.metronome`, `muted`. `setInterval` дрейфует — ок для ровного тика, плохо для ритма → нужен lookahead-планировщик на Web Audio.
+- Редактирование bpm: `ExerciseEditor.tsx` (L134–162); в `plans.tsx` — поля «Темп» на пункт тренировки.
+- Beep/`tone()`/AudioContext-синглтон в `src/lib/voice.ts`; `primeAudio()` вызывается в плеере.
+- Миграции: `store.ts` `version: 12`, `migrateState` со списком изменений в комментарии; тесты в `src/lib/__tests__/store.test.ts`.
+- Прецедент массива пар на Exercise: `clips: {start,end}[]`.
 
-### Step 1: Data Model & Persistence (`src/lib/media.ts`)
-1. Extend `MediaItem` interface with optional `order?: number`.
-2. Update `useMedia` sorting:
-   - For `album === "goal"`, sort primarily by `order` (ascending).
-   - If `order` is missing/equal, fallback to `b.date.localeCompare(a.date) || b.createdAt - a.createdAt` (preserves existing order for un-reordered items).
-3. Update `addFiles` and `addLink` for `album === "goal"`:
-   - Compute `minOrder` of existing goal items; newly added goal items get `order: (minOrder ?? 0) - 1` so they appear at the front of the grid.
-4. Add `reorderMedia(album: Album, orderedIds: string[]): Promise<void>`:
-   - Atomic batch update in a single `readwrite` IndexedDB transaction: assigns `order: index` (0, 1, 2, ...) to the items matching `orderedIds`.
-   - Calls `emit()` to notify subscribers.
+## Data Model
+```ts
+// src/lib/types.ts
+exercise.rhythm?: number[] | undefined;   // ms between taps; beats play at 0, i0, i0+i1, ...; loop length = sum
+workoutItem.rhythm?: number[] | undefined; // per-plan override, same unit
+```
+- Первый удар каждого цикла — акцентный по умолчанию (не хранится отдельно, чисто playback).
+- Ограничения: 1–32 интервала, каждый 60–5000 мс (`sanitizeRhythm`).
+- `item.rhythm ?? ex.rhythm` — если задан ритм, он **вытесняет** `bpm` и у пункта, и у упражнения (ритм > bpm в приоритете разрешения).
 
-### Step 2: Goal Grid Component with DnD (`src/components/game/GoalGrid.tsx`)
-1. Create `GoalGrid.tsx` using `@dnd-kit/core` (`DndContext`, `DragOverlay`, `closestCenter`, `PointerSensor`, `KeyboardSensor`, `TouchSensor`) and `@dnd-kit/sortable` (`SortableContext`, `rectSortingStrategy`, `useSortable`).
-2. Add Sortable Goal Item (`SortableGoalCard`):
-   - Touch-friendly drag grip handle button in top-left (`GripVertical` icon, >=44px touch target, `touch-action: none`).
-   - Prevents scroll interference on mobile: finger drag on the grip reorders; finger drag elsewhere scrolls the page smoothly.
-   - Preserves tap to open, long-press to multi-select, and top-right dropdown menu.
-   - When in multi-select mode (`selecting === true`), drag handles are hidden/disabled to avoid conflict with selection checkboxes.
-3. Smooth animation:
-   - `CSS.Transform.toString(transform)` and transition via `useSortable`.
-   - `DragOverlay` showing an elevated preview with subtle scale and shadow when dragging.
-   - Immediate optimistic state update on drag end + batch persistence via `reorderMedia`.
+## Steps
 
-### Step 3: Integration in Gallery View (`src/routes/gallery.tsx`)
-1. Replace inline static mapping in `src/routes/gallery.tsx` with `<GoalGrid ... />`.
-2. Pass through lightbox, edit, select, and delete handlers.
+### Step 1: Data model + migration (`commit feat:`)
+1. `types.ts`: добавить оба поля с комментариями.
+2. `store.ts`: `version: 12 → 13`, строка в changelog-комментарии `migrateState`. Поле optional и добавляется только в редакторе → данные не трогаем, миграция — passthrough (проверить, что exercises не фильтруются в `migrateState`).
+3. `__tests__/store.test.ts`: кейс v12→v13 — данные сохраняются, нет потерь привычных полей.
+4. Проверить `backup.ts`: экспорт раздела exercisesDump if wholesale — rhythm едет бесплатно; только убедиться, что импорт v2/v1 не отбрасывает неизвестные поля.
 
-### Step 4: Unit Testing & Verification
-1. Add tests in `src/lib/__tests__/goal-reorder.test.ts` for goal ordering logic, new item placement, and sort comparisons.
-2. Run `pnpm typecheck && pnpm lint && pnpm test && pnpm build`.
-3. Test in browser (desktop + mobile viewport 390px): verify dragging, reordering, persistence after reload, and scroll behavior.
+### Step 2: Pure rhythm logic (`commit feat:`)
+1. Новый `src/lib/rhythm.ts` (чистые функции, без React):
+   - `sanitizeTaps(tapsMs: number[]): number[]` — склейка дребезга (<45 мс между тапами).
+   - `analyzeTaps(tapsMs: number[]): TapAnalysis | null` — детектор цикла: ищет
+     наименьший период k по последовательности гэпов (сравнение `gaps[i]` vs
+     `gaps[i+k]`, tol = clamp(0.15·медиана, 25–90 мс)), усредняет интервалы слота по
+     всем циклам → `{ intervals, cycleMs, cycles, unstable }`. Против алиасинга
+     (все тапы лежат на сетке меньшего периода) — именно гэп-периодичность, а не
+     сетка кратности. Fallback: нельзя распознать ≥1 повтор → весь ввод = один цикл,
+     `unstable`, последний интервал правится вручную.
+   - `sanitizeRhythm(intervals)` / `RHYTHM_LIMITS` — клэмп 60–5000 мс, ≤32 при
+     сохранении/проигрывании; `cycleMs`, `impliedBpm` (подсказка «~N уд/мин»).
+2. `createRhythmPlayer({ intervals, onBeat? }): { start, stop }`:
+   - Lookahead-планировщик: `setInterval(50ms)` → планирует осцилляторы через `tone(...)` **на AudioContext-ном времени** до текущий + 250 мс. Нет дрейфа, пауза таба браузера не рвёт ритм сильнее bpm-варианта.
+   - Внешний колбэк `onBeat(i)` — для визуального пульса (см. Step 4), вызывается ровно при `o.start()`.
+3. `voice.ts`: экспортировать приватные `audio()`/`tone()` (переименовать в `getAudioContext` / `playTone`) — единственные правки в существующем аудио-слое.
+4. `__tests__/rhythm.test.ts`: sanitize (дребезг, лимиты, пустой ввод, 33 удара), cycle/impliedBpm, задёрганные интервалы.
 
-## 3. Files Touched
-- `src/lib/media.ts` (order field, sort logic, reorderMedia batch transaction, initial order on add)
-- `src/components/game/GoalGrid.tsx` (new component: DnD context, sortable grid, drag handle, drag overlay)
-- `src/routes/gallery.tsx` (integrate GoalGrid into goal album view)
-- `src/lib/__tests__/goal-reorder.test.ts` (new tests for ordering logic)
+### Step 3: Recorder UI (`commit feat:`)
+1. Новый `src/components/game/TapRhythmRecorder.tsx`:
+   - Большая пэд-кнопка (≥44px, `pointerdown` + `performance.now()`): первый тап стартует запись, далее накапливаем интервалы; live-счётчик «ударов: N».
+   - Push-чтобы завершить: отдельная кнопка «Стоп / записать», плюс авто-стоп по паузе > 5 c? — Нет: явная кнопка «Готово» (не полагаемся на тайминг пальца).
+   - Прямоугольный «ленточный» preview: точки по интервалам, ширина пропорциональна длительности; подпись «цикл 3.2 с ~19 уд/мин».
+   - Кнопки: «Прослушать» (createRhythmPlayer, в цикле до повторного нажатия), «Перезаписать», «Очистить» (= сброс в bpm-режим).
+   - Тонкие состояния: 1 тап (нельзя «Готово»), дребезг, слишком длинный цикл.
+2. `ExerciseEditor.tsx`: блок «Темп» → сегмент-переключатель «Метроном | Ритм»:
+   - Метроном → старый UI (input + пресеты 40/60/90).
+   - Ритм → `<TapRhythmRecorder>`; выбор сбрасывает противоположное поле (`up({ rhythm: undefined })` / `up({ bpm: undefined })`).
+3. Бэдж в списке библиотеки: рядом с `♩60` — добавленный значок ритма (lucide `AudioWaveform` или `Drum`, например `♫3.2s`).
+4. Мобильная эргономика: тап-пэд на всю ширину, тапы ловятся на `touchstart`/`pointerdown` (без ghost-click двойного срабатывания).
 
-## 4. Risks & Mitigations
-- **Risk: Mobile scroll locking/lag.**
-  - *Mitigation*: Dragging via dedicated drag handle with `touch-action: none`, keeping `touch-action: pan-y` on the card container so native page scroll is never intercepted by accident.
-- **Risk: Interaction collisions (drag vs tap vs long-press vs menu).**
-  - *Mitigation*: Strict isolation — drag handle captures pointer down/touch for DnD; menu stops propagation; card body handles long-press / tap. DnD disabled during selection mode.
-- **Risk: Janky reorder on slow devices.**
-  - *Mitigation*: Optimistic local array update during drag, persisting to IndexedDB asynchronously in a single batch transaction.
+### Step 4: Playback в плеере (`commit feat:`)
+1. `play.$workoutId.tsx`: метроном-эффект разветвляем:
+   - `rhythm = item.rhythm ?? ex.rhythm` — если есть → `createRhythmPlayer` (start на `phase === "work"`, cleanup = `stop()` на `idx/phase/muted`/снятии).
+   - Иначе старый `setInterval`-bpm путь без изменений.
+   - Гейты те же: `v.metronome`, `muted`; `primeAudio()` уже вызывается в эффекте плеера.
+2. Визуальный пульс в `WorkView`: на `onBeat` дёргаем DOM-элемент через `ref`/`classList` (без setState на каждом ударе): акцентная дуга вокруг таймера/счёта повторов пульсирует 150 мс. `prefers-reduced-motion` → только лёгкая opacity-подсветка.
+3. Переходы сета/упражнения: cleanup-эффект убивает цикл автоматически (как сейчас с bpm).
+
+### Step 5: Per-plan override в plans.tsx (`commit feat:`)
+1. В блоке «Темп» пункта тренировки: если у упражнения есть ритм — чип «Ритм из упражнения (3.2c)», кнопка «Настучать свой» (тот же `TapRhythmRecorder` в компакт-режиме) и «Сбросить». Сохраняется в `item.rhythm`.
+2. Плейсхолдер показывает «♪ ритм упражнения».
+
+## Files Touched
+- `src/lib/types.ts` — `Exercise.rhythm?`, `WorkoutItem.rhythm?`
+- `src/lib/store.ts` — version 13, changelog
+- `src/lib/rhythm.ts` — NEW: sanitize/limits/cycle/player
+- `src/lib/voice.ts` — экспорт audio()/tone() (без логики)
+- `src/components/game/TapRhythmRecorder.tsx` — NEW
+- `src/components/game/ExerciseEditor.tsx` — режим метроном|ритм
+- `src/routes/play.$workoutId.tsx` — playback ритма + пульс
+- `src/routes/plans.tsx` — per-item override
+- `src/lib/backup.ts` — проверка, что rhythm проходит экспорт/импорт
+- tests: `__tests__/rhythm.test.ts` (NEW), `__tests__/store.test.ts` (v13)
+- `src/routes/library.tsx` — бэджик ритма в списке
+
+## Risks & Mitigations
+- **Дребезг быстрых тапов** → интервал < 60 мс склеивается в `sanitizeRhythm`, а не верифицируется пользователем.
+- **Дрейф ритма на `setInterval`** → планируем на AudioContext-времени (до 250 мс вперёд), а не по тикам JS.
+- **Visual перерисовки на каждом ударе** → `onBeat` прячет DOM к `ref`, рендер React не задействован.
+- **Слепая зона when user только 1 интервал** → всё равно ок (ритм из 2 ударов, напр. 0/1.0) — поддерживается.
+- **Пауза аудио-контекста на мобилках** → `primeAudio()` уже вызывается в плеере; `TapRhythmRecorder` тоже вызывает при «Прослушать» (user gesture).
+- **Migration risk**: поле optional, только добавляем; миграция passthrough, тест v12→13.
+- **Перезапись ритма после уже действующего bpm** → переключатель сбрасывает противоположное поле, в сохранённом упражнении всегда ровно один из `bpm | rhythm`.
+- **Слишком длинный цикл на упражнении с малым числом повторений** → ограничение 32 ударов / 5 с на интервал + подсказка в UI, чистить вручную не нужно.
+
+## Definition of Done
+- `pnpm typecheck && pnpm lint && pnpm test && pnpm build` — зелёные.
+- Playwright-прогон плеера на реальном приложении: пустой/записанный ритм, смена сета, выключенный metronome в настройках, мьют — ритм/метроном молчат.
+- Скриншоты 390 и 1440: редактор (обе вкладки), плеер с пульсом.
+- Состояния: без ритма (старый bpm), ритм-заглушка «Прослушать» пока AudioContext suspended, disabled «Готово» при 1 тапе.

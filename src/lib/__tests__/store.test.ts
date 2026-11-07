@@ -18,3 +18,35 @@ describe("migrateState · onboarded flag (v10)", () => {
     expect(migrateState({ onboarded: true }, 0).onboarded).toBe(true);
   });
 });
+
+describe("migrateState · tapped rhythm pattern (v13)", () => {
+  it("is a passthrough — optional rhythm rides along without backfill", () => {
+    const exercises = [
+      {
+        id: "e1",
+        name: "Планка",
+        muscles: ["abs"],
+        category: "strength",
+        mode: "time",
+        reps: 0,
+        seconds: 40,
+        equipment: "",
+        description: "",
+        steps: [],
+        mistakes: [],
+        bpm: 60,
+        rhythm: [200, 200, 1000],
+        source: "custom",
+      },
+    ] as unknown as Parameters<typeof migrateState>[0]["exercises"];
+    const out = migrateState({ exercises, voice: { ...initialState.voice, metronome: true } }, 12);
+    expect(out.exercises?.[0]?.rhythm).toEqual([200, 200, 1000]);
+    expect(out.exercises?.[0]?.bpm).toBe(60);
+  });
+
+  it("keeps old data intact when nothing rhythm-related was stored", () => {
+    const out = migrateState({}, 12);
+    expect(out.exercises).toBeUndefined();
+    expect(out.voice?.metronome).toBe(false);
+  });
+});
