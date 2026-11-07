@@ -577,7 +577,7 @@ export function AlbumView({
           />
           {!selecting && (
             <p className="text-center text-xs text-muted-foreground">
-              Зажми фото на секунду, чтобы перетащить и поменять местами.
+              Зажми фото, чтобы перетащить и поменять местами.
             </p>
           )}
         </>
