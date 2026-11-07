@@ -15,6 +15,7 @@ import {
 import { LinkMedia } from "@/components/game/LinkMedia";
 import { PhotoCompare } from "@/components/game/PhotoCompare";
 import { PhotoEditDialog } from "@/components/game/PhotoEditDialog";
+import { GoalGrid } from "@/components/game/GoalGrid";
 import { PhotoGroupDialog } from "@/components/game/PhotoGroupDialog";
 import { PhotoLightbox } from "@/components/game/PhotoLightbox";
 import { PhotoTile } from "@/components/game/PhotoTile";
@@ -50,6 +51,7 @@ import {
   groupItems,
   importMedia,
   removeMedia,
+  reorderMedia,
   ungroup,
   useBlobUrl,
   useMedia,
@@ -558,23 +560,21 @@ export function AlbumView({
         </>
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-3">
-            {items.map((m) => (
-              <GoalCell
-                key={m.id}
-                m={m}
-                selectMode={selecting}
-                selected={sel.includes(m.id)}
-                onTap={() => tapItem(m)}
-                onHold={() => enterSelect([m.id])}
-                onEdit={() => setEditItem(m)}
-                onDelete={() => {
-                  setSel([m.id]);
-                  setDelOpen(true);
-                }}
-              />
-            ))}
-          </div>
+          <GoalGrid
+            items={items}
+            selectMode={selecting}
+            selected={sel}
+            onTapItem={tapItem}
+            onHoldItem={(m) => enterSelect([m.id])}
+            onEditItem={setEditItem}
+            onDeleteItem={(m) => {
+              setSel([m.id]);
+              setDelOpen(true);
+            }}
+            onReorder={async (orderedIds) => {
+              await reorderMedia("goal", orderedIds);
+            }}
+          />
           {!selecting && <HoldHint />}
         </>
       )}
@@ -733,80 +733,6 @@ function HoldHint() {
     <p className="text-center text-xs text-muted-foreground">
       Удерживай фото, чтобы выбрать несколько — объединить в группу, сравнить или удалить.
     </p>
-  );
-}
-
-/** Goal-album cell: tap opens, hold enters multi-select, «···» edits. */
-function GoalCell({
-  m,
-  selectMode,
-  selected,
-  onTap,
-  onHold,
-  onEdit,
-  onDelete,
-}: {
-  m: MediaItem;
-  selectMode: boolean;
-  selected: boolean;
-  onTap: () => void;
-  onHold: () => void;
-  onEdit: () => void;
-  onDelete: () => void;
-}) {
-  const press = useLongPress(() => {
-    markLongPress();
-    onHold();
-  });
-  return (
-    <div
-      {...press}
-      role="checkbox"
-      aria-checked={selectMode ? selected : undefined}
-      aria-label={m.title || "Фото"}
-      tabIndex={0}
-      onClick={() => {
-        if (consumeLongPress()) return;
-        onTap();
-      }}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onTap();
-        }
-      }}
-      className="relative cursor-pointer rounded-2xl outline-none [touch-action:pan-y] focus-visible:ring-4 focus-visible:ring-ring/30"
-    >
-      <PhotoTile m={m} big selectMode={selectMode} selected={selected} />
-      <span
-        onPointerDown={(e) => e.stopPropagation()}
-        onClick={(e) => e.stopPropagation()}
-        className="absolute right-1.5 top-1.5"
-      >
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              aria-label="Действия с фото"
-              onClick={(e) => e.stopPropagation()}
-              className="flex h-11 w-11 items-center justify-center rounded-full bg-foreground/60 text-background"
-            >
-              <MoreVertical className="h-5 w-5" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="min-w-52 rounded-2xl">
-            <DropdownMenuItem className="min-h-[44px] text-[15px]" onSelect={onEdit}>
-              <Pencil className="h-4 w-4" /> Изменить
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              className="min-h-[44px] text-[15px] text-destructive focus:text-destructive"
-              onSelect={onDelete}
-            >
-              <Trash2 className="h-4 w-4" /> Удалить
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </span>
-    </div>
   );
 }
 

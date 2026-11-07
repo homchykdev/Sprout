@@ -145,7 +145,12 @@ export function useMedia(album: Album) {
     const load = () =>
       listMedia().then((all) => {
         if (!on) return;
-        setItems(sortMediaItems(all.filter((x) => x.album === album), album));
+        setItems(
+          sortMediaItems(
+            all.filter((x) => x.album === album),
+            album,
+          ),
+        );
       });
     load();
     subs.add(load);
