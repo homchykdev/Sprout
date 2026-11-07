@@ -575,7 +575,11 @@ export function AlbumView({
               await reorderMedia("goal", orderedIds);
             }}
           />
-          {!selecting && <HoldHint />}
+          {!selecting && (
+            <p className="text-center text-xs text-muted-foreground">
+              Зажми фото на секунду, чтобы перетащить и поменять местами.
+            </p>
+          )}
         </>
       )}
       {light && (
