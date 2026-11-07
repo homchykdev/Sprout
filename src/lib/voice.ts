@@ -3,7 +3,9 @@ import { QueueStrategy, TextToSpeech } from "./native-tts";
 import { useApp } from "./store";
 
 let ctx: AudioContext | null = null;
-const audio = () => (ctx ??= new AudioContext());
+/** Shared AudioContext singleton — exported for the rhythm player's lookahead scheduler. */
+export const getAudioContext = () => (ctx ??= new AudioContext());
+const audio = getAudioContext;
 
 let nativeVoices: ReturnType<typeof TextToSpeech.getSupportedVoices> | undefined;
 let nativeSpeechRequests = 0;
