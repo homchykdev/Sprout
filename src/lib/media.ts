@@ -26,6 +26,8 @@ export interface MediaItem {
   /** Guided shot metadata: where the body faces and whether muscles are tense. */
   pose?: PoseView | undefined;
   strain?: PoseStrain | undefined;
+  /** Manual display order in user-ordered albums (e.g. "goal"). */
+  order?: number | undefined;
 }
 
 const DB = "pulse-media",
@@ -95,20 +97,56 @@ export async function setCover(groupId: string, id: string) {
   for (const m of items) await putMedia({ ...m, cover: m.id === id });
 }
 
+/** Pure sorting helper: goal album respects manual order, others sort newest first. */
+export function sortMediaItems(items: MediaItem[], album: Album): MediaItem[] {
+  return [...items].sort((a, b) => {
+    if (album === "goal") {
+      const hasA = typeof a.order === "number";
+      const hasB = typeof b.order === "number";
+      if (hasA && hasB) {
+        if (a.order !== b.order) return a.order! - b.order!;
+      } else if (hasA) {
+        return -1;
+      } else if (hasB) {
+        return 1;
+      }
+    }
+    return b.date.localeCompare(a.date) || b.createdAt - a.createdAt;
+  });
+}
+
+/** Batch-reorders items in an album in a single IndexedDB transaction. */
+export async function reorderMedia(album: Album, orderedIds: string[]): Promise<void> {
+  const all = await listMedia();
+  const map = new Map(all.map((m) => [m.id, m]));
+  await db().then(
+    (d) =>
+      new Promise<void>((res, rej) => {
+        const t = d.transaction(STORE, "readwrite");
+        const s = t.objectStore(STORE);
+        for (let i = 0; i < orderedIds.length; i++) {
+          const item = map.get(orderedIds[i]!);
+          if (item && item.album === album) {
+            s.put({ ...item, order: i });
+          }
+        }
+        t.oncomplete = () => res();
+        t.onerror = () => rej(t.error);
+        t.onabort = () => rej(t.error);
+      }),
+  );
+  emit();
+}
+
 export function useMedia(album: Album) {
   const [items, setItems] = useState<MediaItem[] | null>(null);
   useEffect(() => {
     let on = true;
     const load = () =>
-      listMedia().then(
-        (all) =>
-          on &&
-          setItems(
-            all
-              .filter((x) => x.album === album)
-              .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt),
-          ),
-      );
+      listMedia().then((all) => {
+        if (!on) return;
+        setItems(sortMediaItems(all.filter((x) => x.album === album), album));
+      });
     load();
     subs.add(load);
     return () => {
@@ -185,6 +223,17 @@ export function useAvatarPhoto() {
   return blob;
 }
 
+async function nextGoalOrder(count = 1): Promise<number | undefined> {
+  const all = await listMedia();
+  const goals = all.filter((x) => x.album === "goal");
+  if (!goals.length) return 0;
+  let min = 0;
+  for (const g of goals) {
+    if (typeof g.order === "number" && g.order < min) min = g.order;
+  }
+  return min - count;
+}
+
 export async function addLink(
   url: string,
   album: Album,
@@ -192,6 +241,7 @@ export async function addLink(
   clips?: { start: number; end: number }[],
 ) {
   const d = new Date();
+  const order = album === "goal" ? await nextGoalOrder(1) : undefined;
   await putMedia({
     id: Math.random().toString(36).slice(2, 10) + Date.now().toString(36),
     album,
@@ -203,6 +253,7 @@ export async function addLink(
     date: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`,
     url,
     clips,
+    ...(order !== undefined ? { order } : {}),
   });
 }
 
@@ -240,6 +291,7 @@ export async function addFiles(
   const skipped: string[] = [];
   const tooHeavy: string[] = [];
   navigator.storage?.persist?.().catch(() => {});
+  let goalOrder = album === "goal" ? await nextGoalOrder(files.length) : undefined;
   for (const f of files) {
     if (isHeic(f)) {
       // iPhone HEIC → one fixed format: JPEG (heic2any outputs it natively,
@@ -251,6 +303,7 @@ export async function addFiles(
         if (!pics.length) throw new Error("empty");
         for (const [i, pic] of pics.entries()) {
           const id = Math.random().toString(36).slice(2, 10) + Date.now().toString(36) + i;
+          const order = goalOrder !== undefined ? goalOrder++ : undefined;
           await putMedia({
             id,
             album,
@@ -261,6 +314,7 @@ export async function addFiles(
             createdAt: Date.now(),
             date: dayOf(f.lastModified || Date.now()),
             blob: pic,
+            ...(order !== undefined ? { order } : {}),
           });
           added.push(id);
         }
@@ -280,6 +334,7 @@ export async function addFiles(
       continue;
     }
     const id = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+    const order = goalOrder !== undefined ? goalOrder++ : undefined;
     const base = {
       id,
       album,
@@ -287,6 +342,7 @@ export async function addFiles(
       note: "",
       createdAt: Date.now(),
       date: dayOf(f.lastModified || Date.now()),
+      ...(order !== undefined ? { order } : {}),
     };
     if (kind === "image") {
       // Already a supported format — store byte-for-byte, no processing.

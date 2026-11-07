@@ -1,124 +1,62 @@
-# Plan: Chat v2 — tool-loop, стабильность, компактный контекст, вложения из приложения
+# Plan: Drag-and-Drop Reordering for Target Physique Photos («Цели фигуры»)
 
-Основан на: `chat-assistant-video-tools-plan.md` (прикреплён пользователем, далее «План»)
-и обратной связи пользователя (история чата «теряется», «добавил, но ничего не появилось»,
-нет прогресса tool-calls в чате, расход токенов на полную библиотеку, нет вложений данных приложения).
+## User Request
+Сделать, чтобы фото целевых фигур можно было менять местами и перетаскивать (Draggable photos).
 
-## 0. Причины наблюдаемых багов (диагноз)
+## 1. Context & Architecture
+- Photos and videos for the "Цели фигуры" (album `goal`) are stored in IndexedDB (`pulse-media` store) via `src/lib/media.ts`.
+- The gallery route `src/routes/gallery.tsx` currently renders `GoalCell` items in a static 2-column grid (`grid grid-cols-2 gap-3`), sorted by date/time.
+- The project already has `@dnd-kit/core`, `@dnd-kit/sortable`, and `@dnd-kit/utilities` installed (used in `PlanEditor.tsx`).
+- Existing photo card interactions:
+  - Single tap: open in lightbox (or toggle checkbox if multi-selecting).
+  - Long-press: enter multi-select mode (`useLongPress`).
+  - Top-right «···» menu: edit note/title or delete.
+  - Page scroll: vertical scrolling on mobile (`touch-action: pan-y`).
 
-1. **«Не такого упражнения»** — библиотека в промпте обрезана топ-25, поиск — на совести
-   модели; кейс/регистр и склонения не нормализуются. → компактный каталог + явные правила
-   матчинга (регистронезависимо, по подстроке) и «уточняющий вопрос максимум один».
-2. **«Дублировал всё — добавил, но ничего не появилось»** — в режиме «спрашивать» модель
-   отвечает «добавил» в тексте, а реальное применение — только по клику карточки; кроме того
-   `parseActions` молча выбрасывает невалидные действия. → правдивые формулировки в промпте
-   - «dropped actions» показываются пользователю + прогресс-шаги.
-3. **Квоты**: каждый ход — попытка с grounding (googleSearch+urlContext), которая на free-tier
-   Gemini 3+ недоступна (План §2.1) и сжигает запросы/токены. → tool-loop без grounding,
-   верифицированный поиск видео; grounding — только как источник для проверки вставленной
-   пользователем ссылки и как degrade-путь.
+## 2. Steps
 
-## 1. Архитектура (как в Плане §3–§4, вписанная в текущий код)
+### Step 1: Data Model & Persistence (`src/lib/media.ts`)
+1. Extend `MediaItem` interface with optional `order?: number`.
+2. Update `useMedia` sorting:
+   - For `album === "goal"`, sort primarily by `order` (ascending).
+   - If `order` is missing/equal, fallback to `b.date.localeCompare(a.date) || b.createdAt - a.createdAt` (preserves existing order for un-reordered items).
+3. Update `addFiles` and `addLink` for `album === "goal"`:
+   - Compute `minOrder` of existing goal items; newly added goal items get `order: (minOrder ?? 0) - 1` so they appear at the front of the grid.
+4. Add `reorderMedia(album: Album, orderedIds: string[]): Promise<void>`:
+   - Atomic batch update in a single `readwrite` IndexedDB transaction: assigns `order: index` (0, 1, 2, ...) to the items matching `orderedIds`.
+   - Calls `emit()` to notify subscribers.
 
-- **Tool-loop на клиенте**: `sendChat` (`src/lib/chat/client.ts`) ведёт раунды:
-  запрос → сервер (`askChat`) → `{type:"tool_calls"|"final"}` → инструменты выполняются
-  на клиенте (мутации через `useApp` — тот же save-путь `upsertExercise`, что и
-  «разобрать видео по ссылке») → functionResponse возвращается следующим
-  запросом в `contents`. Caps: ≤6 раундов, ≤12 tool-calls на сообщение (План §9).
-- **`find_exercise_video`** (`src/lib/chat/video.ts`): нормализация имени → кэш →
-  YouTube Data API `search.list`/`videos.list` (серверный прокси `src/lib/youtube.functions.ts`)
-  → главы из описания (`parseTime` из `embed.ts`) → Gemini-анализ как fallback
-  (`aiAnalyseSegment` в `ai.functions.ts`, structured output, бюджет ~300 ток/с, cap 8 мин)
-  → валидация (План §7.3) → реестр `video_ref` (Map + TTL, клиент, `src/lib/chat/refs.ts`).
-- **`add_exercise_from_ref` / `update_exercise_video`**: мутации принимают ТОЛЬКО
-  `video_ref`; данные (videoId/clips) достаются из реестра; unknown ref → error result.
-- **Реестр результатов и реестр undo**: на каждое применённое действие — снапшот
-  затронутых доменов; в превью-карточке кнопка «Отменить» → `restoreSnapshot`.
-  Additive-only, никаких delete-tools (План §6.4, §11.5).
-- Бюджет `src/lib/chat/budget.ts`: sliding window запросов (RPM), оценка токенов видео
-  (сек×300), повседневный кэш названий → в `useChat` (persist) как `videoCache`.
+### Step 2: Goal Grid Component with DnD (`src/components/game/GoalGrid.tsx`)
+1. Create `GoalGrid.tsx` using `@dnd-kit/core` (`DndContext`, `DragOverlay`, `closestCenter`, `PointerSensor`, `KeyboardSensor`, `TouchSensor`) and `@dnd-kit/sortable` (`SortableContext`, `rectSortingStrategy`, `useSortable`).
+2. Add Sortable Goal Item (`SortableGoalCard`):
+   - Touch-friendly drag grip handle button in top-left (`GripVertical` icon, >=44px touch target, `touch-action: none`).
+   - Prevents scroll interference on mobile: finger drag on the grip reorders; finger drag elsewhere scrolls the page smoothly.
+   - Preserves tap to open, long-press to multi-select, and top-right dropdown menu.
+   - When in multi-select mode (`selecting === true`), drag handles are hidden/disabled to avoid conflict with selection checkboxes.
+3. Smooth animation:
+   - `CSS.Transform.toString(transform)` and transition via `useSortable`.
+   - `DragOverlay` showing an elevated preview with subtle scale and shadow when dragging.
+   - Immediate optimistic state update on drag end + batch persistence via `reorderMedia`.
 
-## 2. Компактный контекст (п.2 пользователя)
+### Step 3: Integration in Gallery View (`src/routes/gallery.tsx`)
+1. Replace inline static mapping in `src/routes/gallery.tsx` with `<GoalGrid ... />`.
+2. Pass through lightbox, edit, select, and delete handlers.
 
-- `buildAppSummary` → `buildCatalog`: одна строка на сущность — `id | name | category |
-мышцы | объём по умолчанию`; БЕЗ описаний/шагов/ошибок. Полные данные подтягиваются:
-  a) вложением данных к сообщению (п.3), б) tool `get_exercise_details(id)`
-  (дешёвый, локальный, без квот ИИ), в) итог в карточке подтверждения вместо текста.
-- Каталог: все упражнения (не топ-25) + id тренировок; трен. — по одной строке.
+### Step 4: Unit Testing & Verification
+1. Add tests in `src/lib/__tests__/goal-reorder.test.ts` for goal ordering logic, new item placement, and sort comparisons.
+2. Run `pnpm typecheck && pnpm lint && pnpm test && pnpm build`.
+3. Test in browser (desktop + mobile viewport 390px): verify dragging, reordering, persistence after reload, and scroll behavior.
 
-## 3. Вложения данных из приложения (п.3)
+## 3. Files Touched
+- `src/lib/media.ts` (order field, sort logic, reorderMedia batch transaction, initial order on add)
+- `src/components/game/GoalGrid.tsx` (new component: DnD context, sortable grid, drag handle, drag overlay)
+- `src/routes/gallery.tsx` (integrate GoalGrid into goal album view)
+- `src/lib/__tests__/goal-reorder.test.ts` (new tests for ordering logic)
 
-- В `ChatComposer` рядом со скрепкой — кнопка «Добавить из приложения»: курсор-меню —
-  упражнение / тренировка / план (поиск по названию).
-- `ChatMessage` (user): `appRefs?: {kind:"exercise"|"workout"|"plan", id, name, data? }`
-  (ref в истории + полный JSON только в момент отправки, как вложения-фото).
-- `sendChat` разворачивает refs в текст-блок «Данные приложения: <JSON>» перед сообщением.
-- В печатных вложениях (не-текстовые фото/видео) не участвуют; в бэкап чатов refs
-  персистятся (лимит на сообщение: ≤6 refs).
-- Энтити с полными полями: упражнение — все поля; тренировка — items с названиями;
-  план — шаги с названиями тренировок.
-
-## 4. Визуализация tool-calls (п.1)
-
-- `ChatMessage` (assistant): `steps?: {label:string; ts:string}[]` — построчные
-  приглушённые метки (muted, мелкий текст, без рамок — «не основные сообщения»).
-- Порядок: «Хорошо, сейчас сделаю это» → «Выполняет поиск: отжимания…» → «Нашёл видеосегмент
-  0:42–1:05 в „Push-ups technique“» → «Проверяю таймкоды…» → финальное нормальное сообщение
-  - карточка-превью (видео-плеер, что добавлено, кнопка Применить/Отменить/Отклонить).
-- Превью-карточка: как `ActionCard` + `LinkMedia` (сегмент video_ref) + «Отменить» после
-  применения (restoreSnapshot), доступно пока не перезагружена страница чата? — нет:
-  снапшот персистится вместе с сообщением (undo возможен из любой сессии).
-
-## 5. Search: YouTube Data API как основной (ответ на п.4 пользователя)
-
-- Бесплатная официальная альтернатива «поиску»: YouTube Data API v3 — это и есть
-  бесплатный поиск со счётчиком 10 000 юнитов/день (search = 100 → ~100 поисков/день,
-  кэш снимает большинство). Держим ключ в Настройках рядом с ИИ-ключом (`ai.youtubeKey`),
-  серверный прокси (`youtube.functions.ts`) — ключ никогда не хранится на клиенте в чистом
-  виде в коде и не логируется.
-- Деградация БЕЗ YouTube-ключа (решение подтверждено пользователем): grounding (googleSearch+
-  urlContext) используется ТОЛЬКО как генератор кандидатов — URL идут как plain data, никогда
-  не попадают в приложение напрямую; каждый кандидат верифицируется в коде через oEmbed
-  (~факт: работает без ключа, отбраковывает приватные/удалённые) → зарегистрировать video_ref
-  или честный fallback «вставьте ссылку». Ничего не выдумываем (План §3).
-- Прочие бесплатные «поисковики» (DuckDuckGo HTML, Brave без ключа, Piped/Invidious) —
-  отклонены: скрейпинг хрупок, ID не верифицируются, ToS-серый, видео не встраиваются.
-
-## 6. Файлы
-
-- `src/lib/chat/functions-loop` → изменения в `src/lib/chat.functions.ts` (round inference),
-  `src/lib/chat/client.ts` (loop + steps), `src/lib/chat/prompt.ts` (каталог + правила).
-- Новые: `src/lib/chat/video.ts`, `src/lib/chat/refs.ts`, `src/lib/chat/budget.ts`,
-  `src/lib/youtube.functions.ts`, `src/components/chat/StepLine.tsx`, апгрейд `ActionCard.tsx`,
-  апгрейд `ChatComposer.tsx` (menu «из приложения»), `src/lib/chat/tools.ts` (декларации+хендлеры).
-- `store.ts`: `restoreSnapshot` + (опц.) поле снапшота в message; `ai.youtubeKey` + бэкап v3?
-  (бэкап чатов не трогаем; ключ ии в app-бэкапе — проверить включение).
-- Тесты: `chatSend.test.ts` дополняем тул-лупом (моки), `video.test.ts` (главы/валидация),
-  `refs.test.ts`, `budget.test.ts`, матчинг имён в sanitize.
-
-## 7. Шаги (каждый — commit)
-
-1. Базис: `tools.ts` (декларации), client.ts loop (caps, functionResponse), chat.functions.ts
-   round-API.; тул-хендлеры из существующих action-ов с правами/permission-поликой.
-2. Компактный каталог + правила промпта (матчинг имён, ≤1 уточнение, правдивость «добавил»).
-3. YouTube-поиск: settings-ключ + youtube.functions.ts + video.ts (главы, валидация, кэш).
-4. Превью в карточке + undo (restoreSnapshot) + StepLine.
-5. Вложения «из приложения» в композере + разворачивание в sendChat.
-6. Бюджет/кэш/реестр + Gemini-анализ fallback.
-7. DoD: typecheck+lint+test+build; dev-сервер + Playwright: диалог «добавь отжиманиям видео»
-   с мок-провайдером? — нет, реально с пользовательским ключом НЕ гоняем в CI: сценарий в
-   e2e помечен manual (нужен ключ). Скриншоты 390/1440, консоль чистая.
-
-## 8. Риски
-
-- Tool-loop x квоты: капы раундов/вызовов + бюджет + кэш (План §8).
-- Интеракции с JSON-контрактом: при tools отключаем responseMimeType; контракт формируем
-  промптом + parseChatPayload (терпим к ```json-обёрткам).
-- Undo после последующих изменений: restoreSnapshot точен только для null-изменений
-  после; принимаем — предупреждение «перезапишет текущее состояние».
-- Сериализация functionResponse: только хотим компактные JSON (План §9).
-- Прилёт полей from model без сха: zod-валидация каждого аргумента.
-
-## 9. Out of scope (План §17)
-
-- Interactions API миграция; delete-tools; скачивание/ре-хост видео; медик/нутриционишные фичи.
+## 4. Risks & Mitigations
+- **Risk: Mobile scroll locking/lag.**
+  - *Mitigation*: Dragging via dedicated drag handle with `touch-action: none`, keeping `touch-action: pan-y` on the card container so native page scroll is never intercepted by accident.
+- **Risk: Interaction collisions (drag vs tap vs long-press vs menu).**
+  - *Mitigation*: Strict isolation — drag handle captures pointer down/touch for DnD; menu stops propagation; card body handles long-press / tap. DnD disabled during selection mode.
+- **Risk: Janky reorder on slow devices.**
+  - *Mitigation*: Optimistic local array update during drag, persisting to IndexedDB asynchronously in a single batch transaction.
