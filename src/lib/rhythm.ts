@@ -93,10 +93,8 @@ export function analyzeTaps(tapsMs: number[]): TapAnalysis | null {
   let cycles = 1;
   let unstable = true;
   if (bestK >= 1) {
-    cycles =
-      Math.min(gaps.length, RHYTHM.maxIntervals + 1) >= bestK * 2
-        ? Math.floor(gaps.length / bestK)
-        : 1;
+    // Full repeats need gaps.length >= bestK * 2 (the comparison window above).
+    cycles = gaps.length >= bestK * 2 ? Math.floor(gaps.length / bestK) : 1;
     unstable = !clean || cycles < 2;
     // Average slot k over every cycle that supplies both of its edge gaps.
     for (let slot = 0; slot < bestK; slot++) {
@@ -178,7 +176,7 @@ export function createRhythmPlayer(opts: {
       const acc = slot === 0;
       const cfg = acc ? tickCfg.acc : tickCfg.beat;
       const v = useApp.getState().voice;
-      // tone() is exported but silent scheduling is not stoppable, so build here.
+      // Built here instead of voice.tone() so stop() can cancel already-scheduled tones.
       const stopAt = nextAt + cfg.dur;
       const o = a.createOscillator();
       const g = a.createGain();

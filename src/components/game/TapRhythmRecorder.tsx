@@ -120,9 +120,9 @@ export function TapRhythmRecorder({
             </span>
           </button>
           <p className="text-xs text-muted-foreground">
-            Стучи 2–3 полных повтора ритма. Не делай пауз дольше 5 с и между ударами минимум 60 мс.
+            Стучи 2–3 полных повтора ритма подряд. Пауза между ударами не больше 5 с.
           </p>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <TapButton
               variant="soft"
               disabled={tapCount < 3}
@@ -134,6 +134,11 @@ export function TapRhythmRecorder({
             <TapButton variant="ghost" onClick={begin}>
               <RotateCcw className="h-4 w-4" /> Заново
             </TapButton>
+            {rhythm && (
+              <TapButton variant="ghost" onClick={() => setRecording(false)}>
+                Отмена
+              </TapButton>
+            )}
           </div>
         </>
       ) : rhythm ? (
