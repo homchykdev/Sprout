@@ -134,64 +134,6 @@ export function ExerciseEditor({
               ))}
             </div>
           </div>
-          <div>
-            <p className="mb-2 text-sm font-semibold text-muted-foreground">
-              Темп — что звучит во время выполнения
-            </p>
-            <div className="mb-2 flex gap-2">
-              {(["bpm", "rhythm"] as const).map((m) => (
-                <button
-                  key={m}
-                  onClick={() =>
-                    up(
-                      m === "bpm"
-                        ? { rhythm: undefined }
-                        // An empty pattern marks "rhythm mode" even before the first take.
-                        : { bpm: undefined, rhythm: ex.rhythm ?? [] },
-                    )
-                  }
-                  aria-pressed={tempoMode === m}
-                  className={cn(
-                    "press flex-1 rounded-2xl border-2 py-2 text-sm font-semibold",
-                    tempoMode === m && "border-primary bg-primary-soft text-primary-shade",
-                  )}
-                >
-                  {m === "bpm" ? "Метроном, уд/мин" : "Ритм (настручать)"}
-                </button>
-              ))}
-            </div>
-            {tempoMode === "bpm" ? (
-              <div className="flex gap-2">
-                <input
-                  type="number"
-                  min={0}
-                  max={200}
-                  className={cn(field, "min-w-0 flex-1")}
-                  placeholder="Пусто или 0 = без метронома"
-                  aria-label="Темп метронома, уд/мин"
-                  value={ex.bpm ?? ""}
-                  onChange={(e) =>
-                    up({ bpm: +e.target.value > 0 ? Math.min(200, +e.target.value) : undefined })
-                  }
-                />
-                {[40, 60, 90].map((b) => (
-                  <button
-                    key={b}
-                    onClick={() => up({ bpm: b, rhythm: undefined })}
-                    aria-label={`Темп ${b} уд/мин`}
-                    className={cn(
-                      "press shrink-0 rounded-2xl border-2 px-3 text-sm font-semibold",
-                      ex.bpm === b && "border-primary bg-primary-soft text-primary-shade",
-                    )}
-                  >
-                    {b}
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <TapRhythmRecorder value={ex.rhythm} onChange={(r) => up({ rhythm: r })} />
-            )}
-          </div>
           <input
             className={field}
             placeholder="Инвентарь"
@@ -280,6 +222,64 @@ export function ExerciseEditor({
               onChange={(clips) => up({ clips: clips.length ? clips : undefined })}
             />
           )}
+          <div>
+            <p className="mb-2 text-sm font-semibold text-muted-foreground">
+              Темп — что звучит во время выполнения
+            </p>
+            <div className="mb-2 flex gap-2">
+              {(["bpm", "rhythm"] as const).map((m) => (
+                <button
+                  key={m}
+                  onClick={() =>
+                    up(
+                      m === "bpm"
+                        ? { rhythm: undefined }
+                        // An empty pattern marks "rhythm mode" even before the first take.
+                        : { bpm: undefined, rhythm: ex.rhythm ?? [] },
+                    )
+                  }
+                  aria-pressed={tempoMode === m}
+                  className={cn(
+                    "press flex-1 rounded-2xl border-2 py-2 text-sm font-semibold",
+                    tempoMode === m && "border-primary bg-primary-soft text-primary-shade",
+                  )}
+                >
+                  {m === "bpm" ? "Метроном, уд/мин" : "Ритм (настручать)"}
+                </button>
+              ))}
+            </div>
+            {tempoMode === "bpm" ? (
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  min={0}
+                  max={200}
+                  className={cn(field, "min-w-0 flex-1")}
+                  placeholder="Пусто или 0 = без метронома"
+                  aria-label="Темп метронома, уд/мин"
+                  value={ex.bpm ?? ""}
+                  onChange={(e) =>
+                    up({ bpm: +e.target.value > 0 ? Math.min(200, +e.target.value) : undefined })
+                  }
+                />
+                {[40, 60, 90].map((b) => (
+                  <button
+                    key={b}
+                    onClick={() => up({ bpm: b, rhythm: undefined })}
+                    aria-label={`Темп ${b} уд/мин`}
+                    className={cn(
+                      "press shrink-0 rounded-2xl border-2 px-3 text-sm font-semibold",
+                      ex.bpm === b && "border-primary bg-primary-soft text-primary-shade",
+                    )}
+                  >
+                    {b}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <TapRhythmRecorder value={ex.rhythm} onChange={(r) => up({ rhythm: r })} />
+            )}
+          </div>
           <div>
             <p className="mb-2 text-sm font-semibold text-muted-foreground">
               Моя оценка — учитывается при составлении тренировок от ИИ
