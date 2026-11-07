@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
   ArrowDown,
   ArrowUp,
+  AudioLines,
   ChevronRight,
   Pencil,
   Play,
@@ -19,9 +20,11 @@ import { FeedbackEditor, cleanFeedback, toParts } from "@/components/game/Feedba
 import { aiCreateWorkout } from "@/lib/clients";
 import { forecast, nextWorkout, planProgress } from "@/lib/plan";
 import { useApp, uid } from "@/lib/store";
+import { cycleTime, formatSec } from "@/lib/rhythm";
 import type { Workout } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { estimateMinutes } from "@/lib/workout-utils";
+import { TapRhythmRecorder } from "@/components/game/TapRhythmRecorder";
 import { LibraryContent } from "./library";
 
 export const Route = createFileRoute("/plans")({
@@ -303,10 +306,13 @@ function WorkoutEditor({ value, onClose }: { value: Workout | null; onClose: () 
   const [w, setW] = useState<Workout | null>(value);
   const [pick, setPick] = useState(false);
   const [q, setQ] = useState("");
+  /** Item index whose rhythm override is being recorded in the dialog. */
+  const [rhythmFor, setRhythmFor] = useState<number | null>(null);
   if (value && w?.id !== value.id) setW(value);
   if (!w || !value) return null;
   const items = w.items;
   const setItems = (x: Workout["items"]) => setW({ ...w, items: x });
+  const exOf = (i: number) => exercises.find((e) => e.id === items[i]?.exerciseId);
   const move = (i: number, d: number) => {
     const x = [...items];
     [x[i], x[i + d]] = [x[i + d]!, x[i]!];
@@ -428,7 +434,7 @@ function WorkoutEditor({ value, onClose }: { value: Workout | null; onClose: () 
                     <input
                       type="number"
                       className={num}
-                      placeholder={ex?.bpm ? `♩${ex.bpm}` : "—"}
+                      placeholder={ex?.bpm ? `♩${ex.bpm}` : ex?.rhythm?.length ? "♪ ритм" : "—"}
                       value={it.bpm ?? ""}
                       onChange={(e) =>
                         setItems(
@@ -439,6 +445,8 @@ function WorkoutEditor({ value, onClose }: { value: Workout | null; onClose: () 
                                   bpm: e.target.value
                                     ? Math.min(200, Math.max(20, +e.target.value))
                                     : undefined,
+                                  // bpm and tapped rhythm are mutually exclusive.
+                                  rhythm: e.target.value ? undefined : x.rhythm,
                                 }
                               : x,
                           ),
@@ -446,6 +454,40 @@ function WorkoutEditor({ value, onClose }: { value: Workout | null; onClose: () 
                       }
                     />
                   </label>
+                  {(ex?.rhythm?.length || it.rhythm) && !it.bpm && (
+                    <>
+                      <button
+                        onClick={() => setRhythmFor(i)}
+                        title={
+                          it.rhythm
+                            ? `Свой ритм пункта: цикл ${formatSec(cycleTime(it.rhythm))}`
+                            : "Настучать свой ритм для этого пункта (иначе берётся ритм упражнения)"
+                        }
+                        className={cn(
+                          "press flex items-center gap-1 rounded-full border-2 px-2.5 py-1 font-semibold",
+                          it.rhythm
+                            ? "border-primary bg-primary-soft text-primary-shade"
+                            : "border-border text-muted-foreground",
+                        )}
+                      >
+                        <AudioLines className="h-3.5 w-3.5" aria-hidden />
+                        {it.rhythm ? `♪ ${formatSec(cycleTime(it.rhythm))}` : "♪ свой ритм"}
+                      </button>
+                      {it.rhythm && (
+                        <button
+                          aria-label="Сбросить свой ритм пункта"
+                          onClick={() =>
+                            setItems(
+                              items.map((x, j) => (j === i ? { ...x, rhythm: undefined } : x)),
+                            )
+                          }
+                          className="press rounded-full p-1 text-muted-foreground"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </>
+                  )}
                 </div>
               </div>
             );
@@ -529,6 +571,28 @@ function WorkoutEditor({ value, onClose }: { value: Workout | null; onClose: () 
             Сохранить
           </TapButton>
         </div>
+        {rhythmFor !== null && (
+          <Dialog open onOpenChange={(o) => !o && setRhythmFor(null)}>
+            <DialogContent className="rounded-3xl sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle>Ритм этого пункта</DialogTitle>
+              </DialogHeader>
+              <p className="text-sm text-muted-foreground">
+                {items[rhythmFor]?.rhythm
+                  ? "Свой ритм пункта — звучит вместо ритма упражнения."
+                  : exOf(rhythmFor)
+                    ? `Пусто — берём ритм упражнения «${exOf(rhythmFor)!.name}»`
+                    : "Пусто — берём темп метронома упражнения"}
+              </p>
+              <TapRhythmRecorder
+                value={items[rhythmFor]?.rhythm}
+                onChange={(r) =>
+                  setItems(items.map((x, j) => (j === rhythmFor ? { ...x, rhythm: r } : x)))
+                }
+              />
+            </DialogContent>
+          </Dialog>
+        )}
       </DialogContent>
     </Dialog>
   );

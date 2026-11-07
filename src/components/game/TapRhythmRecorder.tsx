@@ -6,6 +6,7 @@ import {
   analyzeTaps,
   createRhythmPlayer,
   cycleTime,
+  formatSec,
   impliedBpm,
   sanitizeRhythm,
   type TapAnalysis,
@@ -14,7 +15,7 @@ import { primeAudio } from "@/lib/voice";
 import { cn } from "@/lib/utils";
 import { TapButton } from "./TapButton";
 
-const sec = (ms: number) => `${(ms / 1000).toFixed(1).replace(".", ",")} с`;
+const sec = formatSec;
 
 /**
  * Tap-tempo rhythm recorder: the user taps a repeating pattern several times,

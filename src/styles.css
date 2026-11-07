@@ -303,6 +303,27 @@
 .beat-row.beat-on {
   background-color: var(--primary-soft);
 }
+/* WorkView pulse: one-shot beat flash per accent, re-triggered imperatively. */
+@keyframes beat-flash {
+  0% {
+    opacity: 1;
+    transform: scale(1.25);
+  }
+  100% {
+    opacity: 0.45;
+    transform: scale(1);
+  }
+}
+.beat-flash {
+  animation: beat-flash 0.18s var(--ease-smooth);
+}
+@media (prefers-reduced-motion: reduce) {
+  .beat-flash {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
 @utility animate-confetti {
   animation: confetti 2.8s linear forwards;
 }

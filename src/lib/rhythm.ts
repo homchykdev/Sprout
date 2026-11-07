@@ -1,4 +1,4 @@
-import { getAudioContext, tone } from "./voice";
+import { getAudioContext } from "./voice";
 import { useApp } from "./store";
 
 /** Shared invariants so the editor UI and the player validate the same way. */
@@ -93,7 +93,10 @@ export function analyzeTaps(tapsMs: number[]): TapAnalysis | null {
   let cycles = 1;
   let unstable = true;
   if (bestK >= 1) {
-    cycles = Math.min(gaps.length, RHYTHM.maxIntervals + 1) >= bestK * 2 ? Math.floor(gaps.length / bestK) : 1;
+    cycles =
+      Math.min(gaps.length, RHYTHM.maxIntervals + 1) >= bestK * 2
+        ? Math.floor(gaps.length / bestK)
+        : 1;
     unstable = !clean || cycles < 2;
     // Average slot k over every cycle that supplies both of its edge gaps.
     for (let slot = 0; slot < bestK; slot++) {
@@ -125,7 +128,11 @@ export function sanitizeRhythm(intervals: number[]): number[] | undefined {
   return out.length ? out : undefined;
 }
 
-const clampIntervals = (xs: number[]) => xs.map((v) => clamp(v, RHYTHM.minIntervalMs, RHYTHM.maxIntervalMs));
+const clampIntervals = (xs: number[]) =>
+  xs.map((v) => clamp(v, RHYTHM.minIntervalMs, RHYTHM.maxIntervalMs));
+
+/** "1,4 с" — ru-formatted seconds for badges and hints. */
+export const formatSec = (ms: number) => `${(ms / 1000).toFixed(1).replace(".", ",")} с`;
 
 /** "~19 уд/мин" hint next to the cycle length — mean beat pace of the pattern. */
 export function impliedBpm(intervals: number[]): number | null {
@@ -140,7 +147,10 @@ export interface RhythmPlayer {
 
 const LOOKAHEAD_SEC = 0.25;
 const TICK_MS = 50;
-const tickCfg = { acc: { freq: 1050, vol: 1.6, dur: 0.07 }, beat: { freq: 1400, vol: 0.9, dur: 0.04 } };
+const tickCfg = {
+  acc: { freq: 1050, vol: 1.6, dur: 0.07 },
+  beat: { freq: 1400, vol: 0.9, dur: 0.04 },
+};
 
 /**
  * Drift-free looping rhythm player. Beats are scheduled on the AudioContext clock
@@ -175,7 +185,10 @@ export function createRhythmPlayer(opts: {
       o.frequency.value = cfg.freq;
       o.type = "square";
       g.gain.setValueAtTime(0.0001, nextAt);
-      g.gain.exponentialRampToValueAtTime(Math.max(0.0002, v.volume * 0.35 * cfg.vol), nextAt + 0.015);
+      g.gain.exponentialRampToValueAtTime(
+        Math.max(0.0002, v.volume * 0.35 * cfg.vol),
+        nextAt + 0.015,
+      );
       g.gain.exponentialRampToValueAtTime(0.0001, stopAt);
       o.connect(g).connect(a.destination);
       o.start(nextAt);
@@ -184,10 +197,13 @@ export function createRhythmPlayer(opts: {
       played.push(src);
       const at = (nextAt - a.currentTime) * 1000;
       const slotRef = slot;
-      const t = setTimeout(() => {
-        timeouts.delete(t);
-        opts.onBeat?.(slotRef);
-      }, Math.max(0, at));
+      const t = setTimeout(
+        () => {
+          timeouts.delete(t);
+          opts.onBeat?.(slotRef);
+        },
+        Math.max(0, at),
+      );
       timeouts.add(t);
       beat++;
       nextAt += intervals[slot]! / 1000;

@@ -1,6 +1,16 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { AlertTriangle, Check, ChevronDown, SkipForward, Volume2, VolumeX, X } from "lucide-react";
+import {
+  AlertTriangle,
+  AudioLines,
+  Check,
+  ChevronDown,
+  SkipForward,
+  Volume2,
+  VolumeX,
+  X,
+} from "lucide-react";
 import { beep, fanfare, primeAudio, speak, stopSpeech } from "@/lib/voice";
+import { createRhythmPlayer } from "@/lib/rhythm";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { DiaryForm } from "@/components/game/DiaryForm";
@@ -321,13 +331,44 @@ function WorkView({ step, left, onDone }: { step: Step; left: number; onDone: ()
   const [open, setOpen] = useState(false);
   const timed = ex.mode === "time";
   const pct = timed ? 1 - left / Math.max(1, item.seconds) : 0;
+  // Tapped rhythm loops for the whole set; WorkView is keyed per step, so the
+  // player starts/stops exactly with the exercise — same lifecycle as the speech cues.
+  const muted = useApp((x) => x.voice.muted);
+  const metronomeOn = useApp((x) => x.voice.metronome);
+  const rhythm = item.rhythm?.length ? item.rhythm : ex.rhythm?.length ? ex.rhythm : undefined;
+  const pulse = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    const v = useApp.getState().voice;
+    if (!rhythm || muted || !v.metronome) return;
+    const onBeat = () => {
+      const el = pulse.current;
+      if (!el) return;
+      el.classList.remove("beat-flash");
+      void el.offsetWidth;
+      el.classList.add("beat-flash");
+    };
+    const p = createRhythmPlayer({ intervals: rhythm, onBeat });
+    p.start();
+    return () => p.stop();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rhythm?.join(","), muted]);
+  const rhythmActive = !!rhythm && metronomeOn && !muted;
   return (
     <div className="animate-rise flex flex-1 flex-col px-5 pb-6">
       <ExerciseMedia ex={ex} />
       <div className="mt-5 flex items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+          <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
             Подход {set} из {item.sets}
+            {rhythmActive && (
+              <span
+                ref={pulse}
+                title="Ритм звучит в цикле, первый удар — акцентный"
+                className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary-soft"
+              >
+                <AudioLines className="h-3 w-3 text-primary-shade" aria-hidden />
+              </span>
+            )}
           </p>
           <h1 className="text-2xl font-extrabold leading-tight tracking-tight">{ex.name}</h1>
         </div>

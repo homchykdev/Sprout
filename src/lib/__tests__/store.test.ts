@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { initialState, migrateState } from "../store";
+import type { Exercise } from "../types";
 
 describe("migrateState · onboarded flag (v10)", () => {
   it("keeps the wizard hidden for upgrades from v9 and back", () => {
@@ -38,7 +39,7 @@ describe("migrateState · tapped rhythm pattern (v13)", () => {
         rhythm: [200, 200, 1000],
         source: "custom",
       },
-    ] as unknown as Parameters<typeof migrateState>[0]["exercises"];
+    ] as unknown as Exercise[];
     const out = migrateState({ exercises, voice: { ...initialState.voice, metronome: true } }, 12);
     expect(out.exercises?.[0]?.rhythm).toEqual([200, 200, 1000]);
     expect(out.exercises?.[0]?.bpm).toBe(60);

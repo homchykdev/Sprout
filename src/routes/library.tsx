@@ -9,7 +9,7 @@ import { blankExercise, ExerciseEditor } from "@/components/game/ExerciseEditor"
 import { TapButton } from "@/components/game/TapButton";
 import { ExerciseThumb } from "@/components/game/ExerciseThumb";
 import { useApp } from "@/lib/store";
-import { cycleTime } from "@/lib/rhythm";
+import { cycleTime, formatSec } from "@/lib/rhythm";
 import { CATEGORIES, MUSCLES, type Category, type Exercise } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -114,7 +114,7 @@ export function LibraryContent() {
               <p className="truncate text-xs text-muted-foreground">
                 {CATEGORIES[e.category]} · {e.muscles.map((m) => MUSCLES[m]).join(", ")}
                 {e.rhythm?.length
-                  ? ` · ♪${(cycleTime(e.rhythm) / 1000).toFixed(1).replace(".", ",")}с`
+                  ? ` · ♪${formatSec(cycleTime(e.rhythm))}`
                   : e.bpm
                     ? ` · ♩${e.bpm}`
                     : ""}

@@ -43,9 +43,7 @@ describe("analyzeTaps · repeating patterns", () => {
   });
 
   it("smooths finger jitter via multi-cycle averaging", () => {
-    const a = analyzeTaps(
-      taps(210, 190, 1020, 195, 205, 990, 200, 210, 1005, 205, 195, 995),
-    )!;
+    const a = analyzeTaps(taps(210, 190, 1020, 195, 205, 990, 200, 210, 1005, 205, 195, 995))!;
     expect(a.intervals.every((v) => v >= 150 && v <= 1100)).toBe(true);
     expect(a.intervals.length).toBe(3);
     expect(a.unstable).toBe(false);
@@ -94,9 +92,7 @@ describe("explicit rhythm values", () => {
   });
 
   it("caps length and drops empties", () => {
-    expect(sanitizeRhythm(Array.from({ length: 40 }, () => 100))?.length).toBe(
-      RHYTHM.maxIntervals,
-    );
+    expect(sanitizeRhythm(Array.from({ length: 40 }, () => 100))?.length).toBe(RHYTHM.maxIntervals);
     expect(sanitizeRhythm([NaN])).toBeUndefined();
   });
 
