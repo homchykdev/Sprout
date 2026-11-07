@@ -47,7 +47,8 @@ export function ExerciseEditor({
   if (value && ex?.id !== value.id) setEx(value);
   if (!ex) return null;
   const up = (p: Partial<Exercise>) => setEx({ ...ex, ...p });
-  const tempoMode: "bpm" | "rhythm" = ex.rhythm?.length ? "rhythm" : "bpm";
+  /** Rhythm mode stays selected even before the first take (rhythm: [] marker). */
+  const tempoMode: "bpm" | "rhythm" = ex.rhythm ? "rhythm" : "bpm";
   const toggleM = (m: MuscleKey) =>
     up({
       muscles: ex.muscles.includes(m) ? ex.muscles.filter((x) => x !== m) : [...ex.muscles, m],
@@ -141,7 +142,14 @@ export function ExerciseEditor({
               {(["bpm", "rhythm"] as const).map((m) => (
                 <button
                   key={m}
-                  onClick={() => up(m === "bpm" ? { rhythm: undefined } : { bpm: undefined })}
+                  onClick={() =>
+                    up(
+                      m === "bpm"
+                        ? { rhythm: undefined }
+                        // An empty pattern marks "rhythm mode" even before the first take.
+                        : { bpm: undefined, rhythm: ex.rhythm ?? [] },
+                    )
+                  }
                   aria-pressed={tempoMode === m}
                   className={cn(
                     "press flex-1 rounded-2xl border-2 py-2 text-sm font-semibold",
