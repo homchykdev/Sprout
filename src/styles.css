@@ -296,6 +296,13 @@
 @utility animate-pulse-ring {
   animation: pulse-ring 1.6s ease-out infinite;
 }
+/* Rhythm editor: row flashes in sync with the loop preview (transform/opacity only). */
+.beat-row {
+  transition: background-color 0.15s var(--ease-smooth);
+}
+.beat-row.beat-on {
+  background-color: var(--primary-soft);
+}
 @utility animate-confetti {
   animation: confetti 2.8s linear forwards;
 }

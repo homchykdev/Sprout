@@ -9,6 +9,7 @@ import { blankExercise, ExerciseEditor } from "@/components/game/ExerciseEditor"
 import { TapButton } from "@/components/game/TapButton";
 import { ExerciseThumb } from "@/components/game/ExerciseThumb";
 import { useApp } from "@/lib/store";
+import { cycleTime } from "@/lib/rhythm";
 import { CATEGORIES, MUSCLES, type Category, type Exercise } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -112,7 +113,11 @@ export function LibraryContent() {
               <p className="truncate font-semibold">{e.name}</p>
               <p className="truncate text-xs text-muted-foreground">
                 {CATEGORIES[e.category]} · {e.muscles.map((m) => MUSCLES[m]).join(", ")}
-                {e.bpm ? ` · ♩${e.bpm}` : ""}
+                {e.rhythm?.length
+                  ? ` · ♪${(cycleTime(e.rhythm) / 1000).toFixed(1).replace(".", ",")}с`
+                  : e.bpm
+                    ? ` · ♩${e.bpm}`
+                    : ""}
               </p>
               {(e.feedback?.difficulty || e.feedback?.verdict) && (
                 <p className="flex items-center gap-1 text-xs font-semibold">

@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { aiImproveExercise } from "@/lib/clients";
 import { clipsToText, parseClips, parseLink } from "@/lib/embed";
 import { LinkMedia } from "./LinkMedia";
+import { TapRhythmRecorder } from "./TapRhythmRecorder";
 import { useApp, uid } from "@/lib/store";
 import { CATEGORIES, MUSCLES, type Category, type Exercise, type MuscleKey } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -46,6 +47,7 @@ export function ExerciseEditor({
   if (value && ex?.id !== value.id) setEx(value);
   if (!ex) return null;
   const up = (p: Partial<Exercise>) => setEx({ ...ex, ...p });
+  const tempoMode: "bpm" | "rhythm" = ex.rhythm?.length ? "rhythm" : "bpm";
   const toggleM = (m: MuscleKey) =>
     up({
       muscles: ex.muscles.includes(m) ? ex.muscles.filter((x) => x !== m) : [...ex.muscles, m],
@@ -131,35 +133,57 @@ export function ExerciseEditor({
               ))}
             </div>
           </div>
-          <label className="block text-sm font-semibold text-muted-foreground">
-            Темп (метроном), уд/мин — пусто или 0 = выкл.
-            <div className="mt-1 flex gap-2">
-              <input
-                type="number"
-                min={0}
-                max={200}
-                className={cn(field, "min-w-0 flex-1")}
-                placeholder="напр. 60"
-                value={ex.bpm ?? ""}
-                onChange={(e) =>
-                  up({ bpm: +e.target.value > 0 ? Math.min(200, +e.target.value) : undefined })
-                }
-              />
-              {[40, 60, 90].map((b) => (
+          <div>
+            <p className="mb-2 text-sm font-semibold text-muted-foreground">
+              Темп — что звучит во время выполнения
+            </p>
+            <div className="mb-2 flex gap-2">
+              {(["bpm", "rhythm"] as const).map((m) => (
                 <button
-                  key={b}
-                  onClick={() => up({ bpm: b })}
-                  aria-label={`Темп ${b} уд/мин`}
+                  key={m}
+                  onClick={() => up(m === "bpm" ? { rhythm: undefined } : { bpm: undefined })}
+                  aria-pressed={tempoMode === m}
                   className={cn(
-                    "press shrink-0 rounded-2xl border-2 px-3 text-sm font-semibold",
-                    ex.bpm === b && "border-primary bg-primary-soft text-primary-shade",
+                    "press flex-1 rounded-2xl border-2 py-2 text-sm font-semibold",
+                    tempoMode === m && "border-primary bg-primary-soft text-primary-shade",
                   )}
                 >
-                  {b}
+                  {m === "bpm" ? "Метроном, уд/мин" : "Ритм (настручать)"}
                 </button>
               ))}
             </div>
-          </label>
+            {tempoMode === "bpm" ? (
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  min={0}
+                  max={200}
+                  className={cn(field, "min-w-0 flex-1")}
+                  placeholder="Пусто или 0 = без метронома"
+                  aria-label="Темп метронома, уд/мин"
+                  value={ex.bpm ?? ""}
+                  onChange={(e) =>
+                    up({ bpm: +e.target.value > 0 ? Math.min(200, +e.target.value) : undefined })
+                  }
+                />
+                {[40, 60, 90].map((b) => (
+                  <button
+                    key={b}
+                    onClick={() => up({ bpm: b, rhythm: undefined })}
+                    aria-label={`Темп ${b} уд/мин`}
+                    className={cn(
+                      "press shrink-0 rounded-2xl border-2 px-3 text-sm font-semibold",
+                      ex.bpm === b && "border-primary bg-primary-soft text-primary-shade",
+                    )}
+                  >
+                    {b}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <TapRhythmRecorder value={ex.rhythm} onChange={(r) => up({ rhythm: r })} />
+            )}
+          </div>
           <input
             className={field}
             placeholder="Инвентарь"
