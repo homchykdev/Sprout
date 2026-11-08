@@ -5,7 +5,6 @@ import {
   Check,
   ChevronDown,
   Eye,
-  Expand,
   SkipForward,
   Undo2,
   Volume2,
@@ -14,7 +13,7 @@ import {
 } from "lucide-react";
 import { beep, fanfare, primeAudio, speak, stopSpeech } from "@/lib/voice";
 import { createRhythmPlayer } from "@/lib/rhythm";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { DiaryForm } from "@/components/game/DiaryForm";
@@ -61,7 +60,13 @@ function Player() {
   // stored workout until the user saves changes after completion.
   const [items, setItems] = useState<WorkoutItem[]>(() => workout?.items ?? []);
   const [dirty, setDirty] = useState(false);
-  const steps = buildSteps(items, s.exercises);
+  // Memoized: rebuilding steps every render recreated `step` objects and re-fired the
+  // phase-init effect, which constantly reset `left` (timers stuck at the start value).
+  const steps = useMemo(
+    () => buildSteps(items, s.exercises),
+
+    [items, s.exercises],
+  );
 
   const [idx, setIdx] = useState(0);
   const [phase, setPhase] = useState<Phase>(() => (prepSeconds() > 0 ? "prep" : "work"));
@@ -155,7 +160,7 @@ function Player() {
       st.ex.mode === "time" ? `${st.item.seconds} секунд` : `${st.item.reps} повторений`;
     if (phase === "prep") {
       const first = steps[0];
-      if (first) speak(`Приготовься: ${first.ex.name}, ${amount(first)}.`, { interrupt: true });
+      if (first) speak(`Готовимся: ${first.ex.name}, ${amount(first)}.`, { interrupt: true });
       return;
     }
     if (phase === "work") {
@@ -175,6 +180,8 @@ function Player() {
         for (const m of nx.ex.mistakes.slice(0, 2)) speak(m);
       }
     }
+    // Any transition (skip, next, back) cuts the previous queue — mistakes/intro never leak.
+    return () => stopSpeech();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idx, phase, paused]);
   useEffect(() => {
@@ -372,14 +379,6 @@ function Player() {
           {idx + 1}/{steps.length}
         </span>
         <button
-          onClick={goBack}
-          disabled={phase === "prep" || (phase === "work" && idx === 0)}
-          aria-label="К предыдущему упражнению"
-          className="press text-muted-foreground disabled:opacity-30"
-        >
-          <Undo2 className="h-6 w-6" />
-        </button>
-        <button
           aria-label={muted ? "Включить звук" : "Выключить звук"}
           className="press text-muted-foreground"
           onClick={() => {
@@ -416,6 +415,8 @@ function Player() {
           onDone={advance}
           paused={paused}
           next={nextStep}
+          backDisabled={idx === 0 || paused}
+          onBack={goBack}
           onDetails={(ex) => setFull(ex)}
           onNextPreview={() => nextStep && setFull(nextStep.ex)}
         />
@@ -508,6 +509,8 @@ function WorkView({
   onDone,
   paused,
   next,
+  onBack,
+  backDisabled,
   onDetails,
   onNextPreview,
 }: {
@@ -516,6 +519,8 @@ function WorkView({
   onDone: () => void;
   paused: boolean;
   next?: Step | undefined;
+  onBack: () => void;
+  backDisabled: boolean;
   /** Opens the full-exercise dialog; the parent registers the pause. */
   onDetails: (ex: Exercise) => void;
   onNextPreview?: (() => void) | undefined;
@@ -595,13 +600,23 @@ function WorkView({
       </div>
       {ex.description && <p className="mt-2 text-[15px] text-muted-foreground">{ex.description}</p>}
 
-      <button
-        onClick={() => setOpen(!open)}
-        className="mt-4 flex items-center justify-between rounded-2xl bg-muted px-4 py-3 text-sm font-semibold"
-      >
-        Техника и ошибки{" "}
-        <ChevronDown className={cn("h-4 w-4 transition-transform", open && "rotate-180")} />
-      </button>
+      <div className="mt-4 flex items-center gap-1 rounded-2xl bg-muted py-1 pl-2 pr-1.5">
+        <button
+          onClick={() => setOpen(!open)}
+          className="press flex min-h-[40px] flex-1 items-center justify-between rounded-xl px-3 text-sm font-semibold"
+        >
+          Техника и ошибки{" "}
+          <ChevronDown className={cn("h-4 w-4 transition-transform", open && "rotate-180")} />
+        </button>
+        <button
+          onClick={() => onDetails(ex)}
+          aria-label="Прочитать упражнение целиком"
+          title="Полное описание с медиа и ошибками"
+          className="press min-h-[40px] shrink-0 rounded-xl px-3 text-sm font-semibold text-primary-shade"
+        >
+          Полностью
+        </button>
+      </div>
       <div
         className={cn(
           "grid transition-[grid-template-rows] duration-500",
@@ -632,13 +647,6 @@ function WorkView({
         </div>
       </div>
 
-      <button
-        onClick={() => onDetails(ex)}
-        className="press -mt-2 flex items-center gap-2 py-2 text-sm font-semibold text-primary-shade"
-      >
-        <Expand className="h-4 w-4" /> Прочитать целиком
-      </button>
-
       {next && onNextPreview && (
         <button
           onClick={onNextPreview}
@@ -658,8 +666,18 @@ function WorkView({
         </button>
       )}
 
-      <div className="mt-auto pt-6">
-        <TapButton size="lg" className="w-full" onClick={onDone}>
+      <div className="mt-auto flex items-center gap-3 pt-6">
+        <button
+          type="button"
+          onClick={onBack}
+          disabled={backDisabled}
+          aria-label="Вернуться к прошлому упражнению"
+          title="Вернуться к прошлому упражнению"
+          className="press flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-2 bg-card text-muted-foreground disabled:opacity-30"
+        >
+          <Undo2 className="h-5 w-5" />
+        </button>
+        <TapButton size="lg" className="min-w-0 flex-1" onClick={onDone}>
           {timed ? (
             <>
               <SkipForward className="h-5 w-5" /> Дальше

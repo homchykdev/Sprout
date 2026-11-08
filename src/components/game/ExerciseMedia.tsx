@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type MouseEvent } from "react";
 import { LinkMedia } from "@/components/game/LinkMedia";
 import { signedVideo } from "@/lib/clients";
 import { useExerciseMedia } from "@/components/game/ExerciseThumb";
@@ -13,6 +13,14 @@ import type { Exercise } from "@/lib/types";
 export function ExerciseMedia({ ex }: { ex: Exercise }) {
   const own = useExerciseMedia(ex.mediaId);
   const ownUrl = useBlobUrl(own?.blob);
+  // Demo surfaces loop muted: clicking must NOT toggle play/pause (the loop never stops).
+  const noClick = (e: MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+  const NoClick = (
+    <span aria-hidden onPointerDown={noClick} onClick={noClick} className="absolute inset-0" />
+  );
   if (own && ownUrl)
     return (
       <div className="relative aspect-[4/3] w-full overflow-hidden rounded-3xl bg-muted">
@@ -28,6 +36,7 @@ export function ExerciseMedia({ ex }: { ex: Exercise }) {
             className="h-full w-full object-cover"
           />
         )}
+        {NoClick}
       </div>
     );
   const link = ex.videoUrl ? parseLink(ex.videoUrl) : null;
@@ -35,12 +44,13 @@ export function ExerciseMedia({ ex }: { ex: Exercise }) {
     return (
       <div className="relative aspect-[4/3] w-full overflow-hidden rounded-3xl bg-muted">
         <LinkMedia url={ex.videoUrl!} clips={ex.clips} />
+        {NoClick}
       </div>
     );
-  return <FileMedia ex={ex} />;
+  return <FileMedia ex={ex} noClick={noClick} />;
 }
 
-function FileMedia({ ex }: { ex: Exercise }) {
+function FileMedia({ ex, noClick }: { ex: Exercise; noClick?: (e: MouseEvent) => void }) {
   const [src, setSrc] = useState<string | undefined>();
   const [failed, setFailed] = useState(false);
   useEffect(() => {
@@ -67,6 +77,9 @@ function FileMedia({ ex }: { ex: Exercise }) {
             </span>
           )}
         </div>
+      )}
+      {noClick && (
+        <span aria-hidden onPointerDown={noClick} onClick={noClick} className="absolute inset-0" />
       )}
     </div>
   );

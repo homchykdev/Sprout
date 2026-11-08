@@ -8,7 +8,7 @@ export const getAudioContext = () => (ctx ??= new AudioContext());
 const audio = getAudioContext;
 
 let nativeVoices: ReturnType<typeof TextToSpeech.getSupportedVoices> | undefined;
-let nativeSpeechRequests = 0;
+let nativeSpeechRequests = 0; // in-flight speak calls; generation counter handles queuing
 let nativeSpeechGeneration = 0;
 
 /**
@@ -126,8 +126,9 @@ export function speak(text: string, opts: { interrupt?: boolean } = {}) {
 
 export function stopSpeech() {
   if (Capacitor.isNativePlatform()) {
+    // Stop even when no request is tracked: queued Add-strategy items may outlive their
+    // resolved promise, so the engine queue must be flushed explicitly.
     nativeSpeechGeneration++;
-    if (!nativeSpeechRequests) return;
     void TextToSpeech.stop().catch((error: unknown) =>
       console.error("Could not stop native speech.", error),
     );

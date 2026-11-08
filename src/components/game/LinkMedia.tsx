@@ -282,11 +282,42 @@ export function LinkMedia({
   return (
     <iframe
       className={box}
-      src={k.url}
+      src={withPlayerParams(k.url, { autoplay, muted, controls })}
       allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
       allowFullScreen
       referrerPolicy="no-referrer"
       title="Медиа"
     />
   );
+}
+
+/**
+ * Embed params for generic iframe players.
+ * Kinescope (the common ru host here) supports URL params: without controls we use the
+ * `background=1` mode — no click-to-pause, always autoplay + muted + loop, so tapping the
+ * demo never silences it. Interactive surfaces keep `controls=1` and explicit autoplay/muted.
+ */
+function withPlayerParams(
+  url: string,
+  flags: { autoplay: boolean; muted: boolean; controls: boolean },
+): string {
+  const u = new URL(url);
+  const isKinescope = /(^|\.)kinescope\.(io|ru|com)$/i.test(u.hostname);
+  if (isKinescope) {
+    if (!flags.controls) {
+      u.searchParams.set("background", "1");
+      // The player can resume from the stored watch position — force the very start.
+      if (!u.searchParams.has("t")) u.searchParams.set("t", "0");
+    } else {
+      u.searchParams.set("controls", "1");
+      u.searchParams.set("autoplay", flags.autoplay ? "1" : "0");
+      u.searchParams.set("muted", flags.muted ? "1" : "0");
+    }
+    u.searchParams.set("playsinline", "1");
+  } else {
+    u.searchParams.set("autoplay", flags.autoplay ? "1" : "0");
+    u.searchParams.set("muted", flags.muted ? "1" : "0");
+    u.searchParams.set("loop", "1");
+  }
+  return u.toString();
 }
