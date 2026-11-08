@@ -43,6 +43,8 @@ export interface AppState {
   /** Welcome wizard shown once; existing installs migrate to `true`. */
   onboarded: boolean;
   voice: VoiceSettings;
+  /** Session-execution settings (prep countdown before the first exercise). */
+  workoutSettings: WorkoutSettings;
   /** Badge ids already celebrated (confetti shown once). */
   badgesSeen: string[];
   /** Monthly-challenge keys (yyyy-MM) already celebrated. */
@@ -50,6 +52,12 @@ export interface AppState {
 }
 
 export type SoundTheme = "spark" | "triumph" | "calm";
+
+/** How the workout player behaves (execution, not data). */
+export interface WorkoutSettings {
+  /** Countdown before the very first exercise of a session (seconds, 0 = off). */
+  prepSeconds: number;
+}
 
 export interface VoiceSettings {
   enabled: boolean;
@@ -131,6 +139,7 @@ export const initialState: AppState = {
     volume: 0.6,
     theme: "spark",
   },
+  workoutSettings: { prepSeconds: 5 },
   badgesSeen: [],
   medalsSeen: [],
 };
@@ -291,6 +300,7 @@ export function migrateState(p: Partial<AppState>, from: number): Partial<AppSta
       }));
   }
   out.voice = { ...initialState.voice, ...(p.voice ?? {}) };
+  out.workoutSettings = { ...initialState.workoutSettings, ...(p.workoutSettings ?? {}) };
   // v11 -> v12: reminders become a workout window + preferred time.
   out.reminders = migrateReminders(p.reminders as { enabled: boolean; hour: number } | undefined);
   out.photoReminder = { ...DEFAULT_PHOTO_REMINDER, ...(p.photoReminder ?? {}) };

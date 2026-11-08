@@ -2,7 +2,7 @@ import { useRef, useState, type ReactNode } from "react";
 import { draftToState, isDraftDirty, pickDraft, type SettingsDraft } from "@/lib/settings-draft";
 import type { AiSettings } from "@/lib/types";
 import type { PlanSettings } from "@/lib/plan";
-import { useApp, type VoiceSettings } from "@/lib/store";
+import { useApp, type VoiceSettings, type WorkoutSettings } from "@/lib/store";
 import { SettingsDraftContext } from "./draft-context";
 
 /** Snapshot provider: edits live in local state, the store changes only via save(). */
@@ -14,6 +14,8 @@ export function SettingsDraftProvider({ children }: { children: ReactNode }) {
   const update = (patch: Partial<SettingsDraft>) => setDraft((d) => ({ ...d, ...patch }));
   const updateVoice = (patch: Partial<VoiceSettings>) =>
     setDraft((d) => ({ ...d, voice: { ...d.voice, ...patch } }));
+  const updateWorkoutSettings = (patch: Partial<WorkoutSettings>) =>
+    setDraft((d) => ({ ...d, workoutSettings: { ...d.workoutSettings, ...patch } }));
   const updateAi = (patch: Partial<AiSettings>) =>
     setDraft((d) => ({ ...d, ai: { ...d.ai, ...patch } }));
   const updatePlanSettings = (patch: Partial<PlanSettings>) =>
@@ -39,6 +41,7 @@ export function SettingsDraftProvider({ children }: { children: ReactNode }) {
         dirty,
         update,
         updateVoice,
+        updateWorkoutSettings,
         updateAi,
         updatePlanSettings,
         save,

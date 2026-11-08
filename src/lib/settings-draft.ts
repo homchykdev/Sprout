@@ -1,4 +1,4 @@
-import type { AppState, VoiceSettings } from "./store";
+import type { AppState, VoiceSettings, WorkoutSettings } from "./store";
 import type { PlanSettings } from "./plan";
 import type { PhotoReminderSettings } from "./photo-reminders";
 import type { ReminderSettings } from "./phrases";
@@ -10,6 +10,7 @@ export interface SettingsDraft {
   reminders: ReminderSettings;
   photoReminder: PhotoReminderSettings;
   voice: VoiceSettings;
+  workoutSettings: WorkoutSettings;
   ai: AiSettings;
   /** Protection settings only — the plan cycle itself is edited on the /plans tab. */
   planSettings: PlanSettings;
@@ -25,6 +26,7 @@ export function pickDraft(s: AppState): SettingsDraft {
     reminders: { ...s.reminders },
     photoReminder: { ...s.photoReminder },
     voice: { ...s.voice },
+    workoutSettings: { ...s.workoutSettings },
     ai: { ...s.ai },
     planSettings: { ...s.plan.settings },
     ffmpegKey: s.ffmpegKey,
@@ -40,6 +42,7 @@ export function draftToState(d: SettingsDraft, plan: AppState["plan"]): Partial<
     reminders: { ...d.reminders },
     photoReminder: { ...d.photoReminder },
     voice: { ...d.voice },
+    workoutSettings: { ...d.workoutSettings },
     ai: { ...d.ai },
     plan: { ...plan, settings: { ...d.planSettings } },
     ffmpegKey: d.ffmpegKey,

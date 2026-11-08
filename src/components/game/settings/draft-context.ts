@@ -2,7 +2,7 @@ import { createContext, useContext } from "react";
 import type { AiSettings } from "@/lib/types";
 import type { PlanSettings } from "@/lib/plan";
 import type { SettingsDraft } from "@/lib/settings-draft";
-import type { VoiceSettings } from "@/lib/store";
+import type { VoiceSettings, WorkoutSettings } from "@/lib/store";
 
 /** Mutable settings draft: controls edit the snapshot, the store only on an explicit save. */
 export interface SettingsDraftApi {
@@ -12,6 +12,7 @@ export interface SettingsDraftApi {
   dirty: boolean;
   update: (patch: Partial<SettingsDraft>) => void;
   updateVoice: (patch: Partial<VoiceSettings>) => void;
+  updateWorkoutSettings: (patch: Partial<WorkoutSettings>) => void;
   updateAi: (patch: Partial<AiSettings>) => void;
   updatePlanSettings: (patch: Partial<PlanSettings>) => void;
   /** Persists the draft to the store. */

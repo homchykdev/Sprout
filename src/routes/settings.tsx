@@ -6,6 +6,7 @@ import { FloatingSaveBar } from "@/components/game/settings/FloatingSaveBar";
 import { UnsavedDialog } from "@/components/game/settings/UnsavedDialog";
 import { ProfileGroup } from "@/components/game/settings/ProfileGroup";
 import { PlanGroup } from "@/components/game/settings/PlanGroup";
+import { WorkoutGroup } from "@/components/game/settings/WorkoutGroup";
 import { NotificationsGroup } from "@/components/game/settings/NotificationsGroup";
 import { SoundGroup } from "@/components/game/settings/SoundGroup";
 import { AiGroup } from "@/components/game/settings/AiGroup";
@@ -62,6 +63,7 @@ function SettingsBody() {
       <div className="mt-4 space-y-4">
         <ProfileGroup />
         <PlanGroup />
+        <WorkoutGroup />
         <NotificationsGroup />
         <SoundGroup />
         <AiGroup />

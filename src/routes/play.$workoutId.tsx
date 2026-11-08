@@ -42,6 +42,13 @@ export const Route = createFileRoute("/play/$workoutId")({
   component: Player,
 });
 
+type Phase = "prep" | "work" | "rest" | "done";
+
+/** Readiness countdown before the very first exercise (default 5 s, 0 = off). */
+function prepSeconds(): number {
+  return Math.max(0, useApp.getState().workoutSettings.prepSeconds | 0);
+}
+
 function Player() {
   const { workoutId } = Route.useParams();
   const nav = useNavigate();
@@ -54,8 +61,8 @@ function Player() {
   const steps = buildSteps(items, s.exercises);
 
   const [idx, setIdx] = useState(0);
-  const [phase, setPhase] = useState<"work" | "rest" | "done">("work");
-  const [left, setLeft] = useState(0);
+  const [phase, setPhase] = useState<Phase>(() => (prepSeconds() > 0 ? "prep" : "work"));
+  const [left, setLeft] = useState(() => Math.max(0, prepSeconds()));
   const [quit, setQuit] = useState(false);
   /** Ids of open UI (dialogs/sheets) that hold the timer; auto-pause covers focus loss. */
   const [pauseSources, setPauseSources] = useState<string[]>([]);
@@ -77,6 +84,7 @@ function Player() {
   useEffect(() => {
     if (!step || phase === "done") return;
     if (phase === "work") setLeft(step.ex.mode === "time" ? step.item.seconds : 0);
+    else if (phase === "prep") setLeft(prepSeconds());
     else setLeft(step.item.rest);
   }, [idx, phase, step]);
 
@@ -117,6 +125,11 @@ function Player() {
     if (!step || phase === "done" || paused) return;
     const amount = (st: Step) =>
       st.ex.mode === "time" ? `${st.item.seconds} секунд` : `${st.item.reps} повторений`;
+    if (phase === "prep") {
+      const first = steps[0];
+      if (first) speak(`Приготовься: ${first.ex.name}, ${amount(first)}.`, { interrupt: true });
+      return;
+    }
     if (phase === "work") {
       const intro = idx === 0 ? "Начинаем. " : "";
       if (step.ex.mode === "time") {
@@ -137,7 +150,8 @@ function Player() {
     if (!step || phase === "done" || left <= 0) return;
     const timedWork = phase === "work" && step.ex.mode === "time";
     if (phase === "work" && !timedWork) return;
-    const total = phase === "work" ? step.item.seconds : step.item.rest;
+    const total =
+      phase === "work" ? step.item.seconds : phase === "prep" ? prepSeconds() : step.item.rest;
     if (left === total) return;
     const cues = useApp.getState().voice.cues;
     if (left <= 3) beep("tick");
@@ -156,6 +170,16 @@ function Player() {
 
   useEffect(() => {
     if (paused || phase === "done" || !step) return;
+    if (phase === "prep") {
+      if (left <= 0) return;
+      const tp = setTimeout(() => {
+        if (left === 1) {
+          beep("go");
+          setPhase("work");
+        } else setLeft((l) => l - 1);
+      }, 1000);
+      return () => clearTimeout(tp);
+    }
     if (phase === "work" && step.ex.mode !== "time") return;
     if (left <= 0) return;
     const t = setTimeout(() => {
@@ -200,6 +224,11 @@ function Player() {
   }
 
   function advance() {
+    if (phase === "prep") {
+      beep("go");
+      setPhase("work");
+      return;
+    }
     if (phase === "work") {
       fanfare("set");
       if (idx >= steps.length - 1) return finish();
@@ -270,6 +299,8 @@ function Player() {
           onSkip={advance}
           onAdjust={(d) => setLeft((l) => Math.max(1, Math.min(600, l + d)))}
         />
+      ) : phase === "prep" ? (
+        <PrepView left={left} first={steps[0]} onStart={advance} />
       ) : (
         <WorkView key={idx} step={step!} left={left} onDone={advance} paused={paused} />
       )}
@@ -524,6 +555,49 @@ function WorkView({
           )}
         </TapButton>
       </div>
+    </div>
+  );
+}
+
+/** Readiness countdown: glance at the first exercise, hear its name, then go. */
+function PrepView({
+  left,
+  first,
+  onStart,
+}: {
+  left: number;
+  first?: Step | undefined;
+  onStart: () => void;
+}) {
+  return (
+    <div className="animate-rise flex flex-1 flex-col items-center px-5 pb-6 pt-10 text-center">
+      <p className="text-sm font-bold uppercase tracking-wider text-primary-shade">Приготовься</p>
+      <p className="mt-2 text-7xl font-extrabold tabular tracking-tight">{left}</p>
+      <div className="mt-4 h-2 w-48 overflow-hidden rounded-full bg-muted">
+        <div
+          className="h-full rounded-full bg-primary transition-[width] duration-1000 ease-linear"
+          style={{ width: `${(left / Math.max(1, prepSeconds())) * 100}%` }}
+        />
+      </div>
+      <p className="mt-3 text-sm text-muted-foreground">
+        Вдох-выдох. Сейчас начнём первое упражнение.
+      </p>
+      {first && (
+        <div className="card-soft mt-8 flex w-full items-center gap-3 p-4 text-left">
+          <ExerciseThumb ex={first.ex} className="h-12 w-12" />
+          <div>
+            <p className="text-xs font-bold uppercase text-muted-foreground">Первое</p>
+            <p className="font-semibold">
+              {first.ex.name} ·{" "}
+              {first.ex.mode === "time" ? `${first.item.seconds} сек` : `${first.item.reps} повт.`}
+            </p>
+          </div>
+        </div>
+      )}
+      <Mascot mood="happy" size={90} className="mt-6" />
+      <TapButton size="lg" className="mt-auto w-full" onClick={onStart}>
+        Начать
+      </TapButton>
     </div>
   );
 }
