@@ -4,6 +4,8 @@ import {
   AudioLines,
   Check,
   ChevronDown,
+  Eye,
+  Expand,
   SkipForward,
   Volume2,
   VolumeX,
@@ -17,12 +19,10 @@ import { DiaryForm } from "@/components/game/DiaryForm";
 import { FeedbackEditor } from "@/components/game/FeedbackEditor";
 import { ConfettiOverlay } from "@/components/game/Celebrate";
 import { Mascot } from "@/components/game/Mascot";
-import { LinkMedia } from "@/components/game/LinkMedia";
-import { ExerciseThumb, useExerciseMedia } from "@/components/game/ExerciseThumb";
-import { useBlobUrl } from "@/lib/media";
-import { parseLink } from "@/lib/embed";
+import { ExerciseThumb } from "@/components/game/ExerciseThumb";
+import { ExerciseMedia } from "@/components/game/ExerciseMedia";
+import { ExerciseFullView } from "@/components/game/ExerciseFullView";
 import { TapButton } from "@/components/game/TapButton";
-import { signedVideo } from "@/lib/clients";
 import { MOTIVATION } from "@/lib/game";
 import { dueToday, planProgress } from "@/lib/plan";
 import { useApp, uid } from "@/lib/store";
@@ -64,6 +64,8 @@ function Player() {
   const [phase, setPhase] = useState<Phase>(() => (prepSeconds() > 0 ? "prep" : "work"));
   const [left, setLeft] = useState(() => Math.max(0, prepSeconds()));
   const [quit, setQuit] = useState(false);
+  /** Exercise currently shown in the full-view dialog (current, next or from prep). */
+  const [full, setFull] = useState<Exercise | null>(null);
   /** Ids of open UI (dialogs/sheets) that hold the timer; auto-pause covers focus loss. */
   const [pauseSources, setPauseSources] = useState<string[]>([]);
   const [autoPaused, setAutoPaused] = useState(false);
@@ -89,6 +91,10 @@ function Player() {
   }, [idx, phase, step]);
 
   // ---- pause bookkeeping: stop speech, count paused time ----
+  useEffect(() => {
+    if (full) addPause("full");
+    else removePause("full");
+  }, [full]);
   useEffect(() => {
     stopSpeech();
     if (paused) {
@@ -298,11 +304,26 @@ function Player() {
           next={nextStep}
           onSkip={advance}
           onAdjust={(d) => setLeft((l) => Math.max(1, Math.min(600, l + d)))}
+          onNextDetails={() => nextStep && setFull(nextStep.ex)}
         />
       ) : phase === "prep" ? (
-        <PrepView left={left} first={steps[0]} onStart={advance} />
+        <PrepView
+          left={left}
+          first={steps[0]}
+          onStart={advance}
+          onDetails={() => steps[0] && setFull(steps[0].ex)}
+        />
       ) : (
-        <WorkView key={idx} step={step!} left={left} onDone={advance} paused={paused} />
+        <WorkView
+          key={idx}
+          step={step!}
+          left={left}
+          onDone={advance}
+          paused={paused}
+          next={nextStep}
+          onDetails={(ex) => setFull(ex)}
+          onNextPreview={() => nextStep && setFull(nextStep.ex)}
+        />
       )}
 
       {/* Quit dialog doubles as a pause: while it is open the countdown is frozen. */}
@@ -338,6 +359,15 @@ function Player() {
         </DialogContent>
       </Dialog>
 
+      {/* Full-exercise dialog: every open pauses the countdown. */}
+      <ExerciseFullView
+        ex={full}
+        open={!!full}
+        onOpenChange={(o) => {
+          if (!o) setFull(null);
+        }}
+      />
+
       {/* Auto-pause (tab hidden / app backgrounded): explicit resume, nothing auto-runs. */}
       {autoPaused && !quit && (
         <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-6 bg-background/90 p-8 text-center backdrop-blur-sm">
@@ -357,78 +387,23 @@ function Player() {
   );
 }
 
-function ExerciseMedia({ ex }: { ex: Exercise }) {
-  const own = useExerciseMedia(ex.mediaId);
-  const ownUrl = useBlobUrl(own?.blob);
-  if (own && ownUrl)
-    return (
-      <div className="relative aspect-[4/3] w-full overflow-hidden rounded-3xl bg-muted">
-        {own.kind === "image" ? (
-          <img src={ownUrl} alt={ex.name} className="h-full w-full object-cover" />
-        ) : (
-          <video
-            src={ownUrl}
-            autoPlay
-            muted
-            loop
-            playsInline
-            className="h-full w-full object-cover"
-          />
-        )}
-      </div>
-    );
-  const link = ex.videoUrl ? parseLink(ex.videoUrl) : null;
-  if (link && link.type !== "video")
-    return (
-      <div className="relative aspect-[4/3] w-full overflow-hidden rounded-3xl bg-muted">
-        <LinkMedia url={ex.videoUrl!} clips={ex.clips} />
-      </div>
-    );
-  return <FileMedia ex={ex} />;
-}
-
-function FileMedia({ ex }: { ex: Exercise }) {
-  const [src, setSrc] = useState<string | undefined>();
-  const [failed, setFailed] = useState(false);
-  useEffect(() => {
-    let on = true;
-    setSrc(undefined);
-    setFailed(false);
-    signedVideo(ex.videoUrl)
-      .then((u) => on && setSrc(u))
-      .catch(() => on && setFailed(true));
-    return () => {
-      on = false;
-    };
-  }, [ex.videoUrl]);
-  return (
-    <div className="relative aspect-[4/3] w-full overflow-hidden rounded-3xl bg-muted">
-      {src && !failed ? (
-        <LinkMedia url={src} clips={ex.clips} onFail={() => setFailed(true)} />
-      ) : (
-        <div className="flex h-full flex-col items-center justify-center gap-2">
-          <span className="animate-float text-8xl">{ex.emoji ?? "🏋️"}</span>
-          {ex.videoUrl && (
-            <span className="text-xs text-muted-foreground">
-              {failed ? "Видео недоступно" : "Загрузка видео…"}
-            </span>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function WorkView({
   step,
   left,
   onDone,
   paused,
+  next,
+  onDetails,
+  onNextPreview,
 }: {
   step: Step;
   left: number;
   onDone: () => void;
   paused: boolean;
+  next?: Step | undefined;
+  /** Opens the full-exercise dialog; the parent registers the pause. */
+  onDetails: (ex: Exercise) => void;
+  onNextPreview?: (() => void) | undefined;
 }) {
   const { ex, item, set } = step;
   const [open, setOpen] = useState(false);
@@ -542,6 +517,32 @@ function WorkView({
         </div>
       </div>
 
+      <button
+        onClick={() => onDetails(ex)}
+        className="press -mt-2 flex items-center gap-2 py-2 text-sm font-semibold text-primary-shade"
+      >
+        <Expand className="h-4 w-4" /> Прочитать целиком
+      </button>
+
+      {next && onNextPreview && (
+        <button
+          onClick={onNextPreview}
+          aria-label="Посмотреть следующее упражнение (тренировка встанет на паузу)"
+          className="press mt-3 flex w-full items-center justify-between rounded-2xl bg-sky-soft px-4 py-3 text-left"
+        >
+          <span className="min-w-0">
+            <span className="block text-[11px] font-bold uppercase tracking-wider text-sky-shade">
+              Далее
+            </span>
+            <span className="block truncate font-semibold">
+              {next.ex.name} ·{" "}
+              {next.ex.mode === "time" ? `${next.item.seconds} сек` : `${next.item.reps} повт.`}
+            </span>
+          </span>
+          <Eye className="ml-3 h-4 w-4 shrink-0 text-sky-shade" />
+        </button>
+      )}
+
       <div className="mt-auto pt-6">
         <TapButton size="lg" className="w-full" onClick={onDone}>
           {timed ? (
@@ -564,10 +565,12 @@ function PrepView({
   left,
   first,
   onStart,
+  onDetails,
 }: {
   left: number;
   first?: Step | undefined;
   onStart: () => void;
+  onDetails: () => void;
 }) {
   return (
     <div className="animate-rise flex flex-1 flex-col items-center px-5 pb-6 pt-10 text-center">
@@ -583,16 +586,21 @@ function PrepView({
         Вдох-выдох. Сейчас начнём первое упражнение.
       </p>
       {first && (
-        <div className="card-soft mt-8 flex w-full items-center gap-3 p-4 text-left">
+        <button
+          onClick={onDetails}
+          aria-label="Прочитать первое упражнение целиком"
+          className="press card-soft mt-8 flex w-full items-center gap-3 p-4 text-left"
+        >
           <ExerciseThumb ex={first.ex} className="h-12 w-12" />
-          <div>
+          <div className="min-w-0">
             <p className="text-xs font-bold uppercase text-muted-foreground">Первое</p>
-            <p className="font-semibold">
+            <p className="truncate font-semibold">
               {first.ex.name} ·{" "}
               {first.ex.mode === "time" ? `${first.item.seconds} сек` : `${first.item.reps} повт.`}
             </p>
           </div>
-        </div>
+          <Eye className="ml-auto h-4 w-4 shrink-0 text-primary-shade" />
+        </button>
       )}
       <Mascot mood="happy" size={90} className="mt-6" />
       <TapButton size="lg" className="mt-auto w-full" onClick={onStart}>
@@ -608,12 +616,15 @@ function RestView({
   next,
   onSkip,
   onAdjust,
+  onNextDetails,
 }: {
   left: number;
   total: number;
   next?: Step | undefined;
   onSkip: () => void;
   onAdjust: (d: number) => void;
+  /** Opens the full view of the upcoming exercise; the parent registers the pause. */
+  onNextDetails?: (() => void) | undefined;
 }) {
   return (
     <div className="animate-rise flex flex-1 flex-col items-center px-5 pb-6 pt-10 text-center">
@@ -644,15 +655,22 @@ function RestView({
       <Mascot mood="happy" size={90} className="mt-8" />
       <p className="mt-2 text-muted-foreground">Дыши глубже. Ты отлично справляешься!</p>
       {next && (
-        <div className="card-soft mt-8 flex w-full items-center gap-3 p-4 text-left">
+        <div
+          onClick={onNextDetails}
+          className={cn(
+            "card-soft mt-8 flex w-full items-center gap-3 p-4 text-left",
+            onNextDetails && "press cursor-pointer",
+          )}
+        >
           <ExerciseThumb ex={next.ex} className="h-12 w-12" />
-          <div>
+          <div className="min-w-0">
             <p className="text-xs font-bold uppercase text-muted-foreground">Далее</p>
-            <p className="font-semibold">
+            <p className="truncate font-semibold">
               {next.ex.name} ·{" "}
               {next.ex.mode === "time" ? `${next.item.seconds} сек` : `${next.item.reps} повт.`}
             </p>
           </div>
+          {onNextDetails && <Eye className="ml-auto h-4 w-4 shrink-0 text-sky-shade" />}
         </div>
       )}
       <TapButton variant="sky" size="lg" className="mt-auto w-full" onClick={onSkip}>
