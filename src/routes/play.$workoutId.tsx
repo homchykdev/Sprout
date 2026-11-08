@@ -15,6 +15,7 @@ import {
 import { beep, fanfare, primeAudio, speak, stopSpeech } from "@/lib/voice";
 import { createRhythmPlayer } from "@/lib/rhythm";
 import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { DiaryForm } from "@/components/game/DiaryForm";
 import { FeedbackEditor } from "@/components/game/FeedbackEditor";
@@ -84,6 +85,8 @@ function Player() {
     streakBefore: number;
     streakAfter: number;
   } | null>(null);
+  /** User edited the session — offer to write the changes into the stored workout on finish. */
+  const [savePrompt, setSavePrompt] = useState(false);
   const startedAt = useRef(Date.now());
   const step = steps[idx];
 
@@ -245,6 +248,7 @@ function Player() {
     const before = planProgress(st).streak;
     st.logSession(log);
     setResult({ log, streakBefore: before, streakAfter: planProgress(useApp.getState()).streak });
+    if (dirty) setSavePrompt(true);
     setPhase("done");
   }
 
@@ -289,7 +293,48 @@ function Player() {
     );
 
   if (phase === "done" && result)
-    return <Summary result={result} onDone={() => nav({ to: "/" })} />;
+    return (
+      <>
+        <Summary result={result} onDone={() => nav({ to: "/" })} />
+        <Dialog
+          open={savePrompt}
+          onOpenChange={(o) => {
+            setSavePrompt(o);
+            if (!o) setDirty(false);
+          }}
+        >
+          <DialogContent className="rounded-3xl text-center">
+            <DialogTitle className="text-xl">Сохранить состав тренировки?</DialogTitle>
+            <p className="text-balance text-muted-foreground">
+              Ты менял состав этой сессии. Записать изменения в тренировку «{workout?.name}»?
+            </p>
+            <TapButton
+              size="lg"
+              className="w-full"
+              onClick={() => {
+                if (workout) {
+                  useApp.getState().upsertWorkout({ ...workout, items });
+                  toast.success("Изменения сохранены");
+                }
+                setSavePrompt(false);
+                setDirty(false);
+              }}
+            >
+              Сохранить
+            </TapButton>
+            <button
+              className="py-2 text-sm font-bold uppercase tracking-wide text-muted-foreground"
+              onClick={() => {
+                setSavePrompt(false);
+                setDirty(false);
+              }}
+            >
+              Оставить как есть
+            </button>
+          </DialogContent>
+        </Dialog>
+      </>
+    );
 
   const progress = (idx + (phase === "rest" ? 1 : 0)) / steps.length;
   const nextStep = steps[idx + 1];
