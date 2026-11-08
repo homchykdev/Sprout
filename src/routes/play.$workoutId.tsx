@@ -27,7 +27,8 @@ import { TapButton } from "@/components/game/TapButton";
 import { MOTIVATION } from "@/lib/game";
 import { dueToday, planProgress } from "@/lib/plan";
 import { useApp, uid } from "@/lib/store";
-import { buildSteps, type Step } from "@/lib/session";
+import { buildSteps, itemIndexAtStep, type Step } from "@/lib/session";
+import { SessionEditorSheet } from "@/components/game/SessionEditorSheet";
 import type { Difficulty, Exercise, Feedback, SessionLog, WorkoutItem } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -67,6 +68,8 @@ function Player() {
   const [quit, setQuit] = useState(false);
   /** Exercise currently shown in the full-view dialog (current, next or from prep). */
   const [full, setFull] = useState<Exercise | null>(null);
+  /** Session composition sheet (opened from the progress bar). */
+  const [edit, setEdit] = useState(false);
   /** Ids of open UI (dialogs/sheets) that hold the timer; auto-pause covers focus loss. */
   const [pauseSources, setPauseSources] = useState<string[]>([]);
   const [autoPaused, setAutoPaused] = useState(false);
@@ -91,11 +94,26 @@ function Player() {
     else setLeft(step.item.rest);
   }, [idx, phase, step]);
 
+  // ---- session edits: keep the position valid ----
+  useEffect(() => {
+    if (idx >= steps.length && steps.length) {
+      setIdx(steps.length - 1);
+      setPhase("work");
+    }
+  }, [idx, steps.length]);
+  useEffect(() => {
+    if (phase === "rest" && step && step.item.rest <= 0) setPhase("work");
+  }, [phase, step]);
+
   // ---- pause bookkeeping: stop speech, count paused time ----
   useEffect(() => {
     if (full) addPause("full");
     else removePause("full");
   }, [full]);
+  useEffect(() => {
+    if (edit) addPause("edit");
+    else removePause("edit");
+  }, [edit]);
   useEffect(() => {
     stopSpeech();
     if (paused) {
@@ -286,14 +304,22 @@ function Player() {
         >
           <X className="h-7 w-7" />
         </button>
-        <div className="h-4 flex-1 overflow-hidden rounded-full bg-muted">
-          <div
-            className="relative h-full rounded-full bg-primary transition-[width] duration-700 ease-out"
-            style={{ width: `${Math.max(3, progress * 100)}%` }}
-          >
-            <span className="absolute inset-x-2 top-1 h-1 rounded-full bg-primary-foreground/30" />
+        <button
+          type="button"
+          onClick={() => setEdit(true)}
+          aria-label="Список упражнений — посмотреть и изменить сессию"
+          title="Начало, порядок и правки текущей сессии"
+          className="press relative -my-2 flex-1 rounded-full py-2"
+        >
+          <div className="h-4 overflow-hidden rounded-full bg-muted">
+            <div
+              className="relative h-full rounded-full bg-primary transition-[width] duration-700 ease-out"
+              style={{ width: `${Math.max(3, progress * 100)}%` }}
+            >
+              <span className="absolute inset-x-2 top-1 h-1 rounded-full bg-primary-foreground/30" />
+            </div>
           </div>
-        </div>
+        </button>
         <span className="text-sm font-bold tabular text-muted-foreground">
           {idx + 1}/{steps.length}
         </span>
@@ -386,6 +412,26 @@ function Player() {
         open={!!full}
         onOpenChange={(o) => {
           if (!o) setFull(null);
+        }}
+      />
+
+      {/* Session composition: view what is coming and edit this session only. */}
+      <SessionEditorSheet
+        open={edit}
+        onOpenChange={setEdit}
+        items={items}
+        currentItemIndex={Math.max(0, itemIndexAtStep(items, steps, idx))}
+        onDetails={(ex) => setFull(ex)}
+        onChange={(next) => {
+          setItems(next);
+          setDirty(true);
+        }}
+        onGoTo={(i) => {
+          const k = steps.findIndex((st) => st.item === items[i]);
+          if (k >= 0) {
+            setIdx(k);
+            setPhase("work");
+          }
         }}
       />
 

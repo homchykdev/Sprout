@@ -76,6 +76,11 @@ describe("edit reducers", () => {
     expect(out[1]).toMatchObject({ sets: 1, reps: 5, exerciseId: "b" });
     expect(out[0]).toBe(base[0]);
   });
+
+  it("updateItem ignores transient NaN from half-typed inputs", () => {
+    const out = updateItem(base, 1, { sets: Number.NaN });
+    expect(out[1]?.sets).toBe(2);
+  });
 });
 
 describe("reposition", () => {

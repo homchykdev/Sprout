@@ -55,14 +55,18 @@ export function updateItem(
   index: number,
   patch: Partial<WorkoutItem>,
 ): WorkoutItem[] {
-  const clamp = (n: number) => Math.max(1, Math.min(999, Math.round(Number.isFinite(n) ? n : 1)));
   return items.map((it, i) => {
     if (i !== index) return it;
-    const next = { ...it, ...patch };
-    next.sets = clamp(next.sets);
-    next.reps = clamp(next.reps);
-    next.seconds = clamp(next.seconds);
-    next.rest = clamp(next.rest);
+    const next = { ...it };
+    for (const [k, v] of Object.entries(patch)) {
+      const key = k as keyof WorkoutItem;
+      if (key === "exerciseId" || key === "rhythm" || typeof v !== "number") {
+        (next as Record<string, unknown>)[k] = v;
+        continue;
+      }
+      if (!Number.isFinite(v)) continue;
+      (next as unknown as Record<string, number>)[k] = Math.max(1, Math.min(999, Math.round(v)));
+    }
     return next;
   });
 }
@@ -74,4 +78,12 @@ export function updateItem(
 export function reposition(stepIndex: number, steps: Step[]): { idx: number; empty: boolean } {
   if (!steps.length) return { idx: 0, empty: true };
   return { idx: Math.min(Math.max(0, stepIndex), steps.length - 1), empty: false };
+}
+
+/** Index of the workout item the given step belongs to (identity match). */
+export function itemIndexAtStep(items: WorkoutItem[], steps: Step[], stepIndex: number): number {
+  const item = steps[stepIndex]?.item;
+  if (!item) return -1;
+  const i = items.lastIndexOf(item);
+  return i;
 }
