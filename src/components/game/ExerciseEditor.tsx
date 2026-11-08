@@ -234,8 +234,8 @@ export function ExerciseEditor({
                     up(
                       m === "bpm"
                         ? { rhythm: undefined }
-                        // An empty pattern marks "rhythm mode" even before the first take.
-                        : { bpm: undefined, rhythm: ex.rhythm ?? [] },
+                        : // An empty pattern marks "rhythm mode" even before the first take.
+                          { bpm: undefined, rhythm: ex.rhythm ?? [] },
                     )
                   }
                   aria-pressed={tempoMode === m}

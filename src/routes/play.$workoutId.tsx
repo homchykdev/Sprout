@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { beep, fanfare, primeAudio, speak, stopSpeech } from "@/lib/voice";
 import { createRhythmPlayer } from "@/lib/rhythm";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { DiaryForm } from "@/components/game/DiaryForm";
 import { FeedbackEditor } from "@/components/game/FeedbackEditor";
@@ -26,6 +26,7 @@ import { signedVideo } from "@/lib/clients";
 import { MOTIVATION } from "@/lib/game";
 import { dueToday, planProgress } from "@/lib/plan";
 import { useApp, uid } from "@/lib/store";
+import { buildSteps, type Step } from "@/lib/session";
 import type { Difficulty, Exercise, Feedback, SessionLog, WorkoutItem } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -41,21 +42,16 @@ export const Route = createFileRoute("/play/$workoutId")({
   component: Player,
 });
 
-type Step = { ex: Exercise; item: WorkoutItem; set: number };
-
 function Player() {
   const { workoutId } = Route.useParams();
   const nav = useNavigate();
   const s = useApp();
   const workout = s.workouts.find((w) => w.id === workoutId);
-  const steps = useMemo<Step[]>(() => {
-    if (!workout) return [];
-    return workout.items.flatMap((item) => {
-      const ex = s.exercises.find((e) => e.id === item.exerciseId);
-      return ex ? Array.from({ length: item.sets }, (_, i) => ({ ex, item, set: i + 1 })) : [];
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workoutId]);
+  // The session runs on its own copy of the items — mid-session editing must not touch the
+  // stored workout until the user saves changes after completion.
+  const [items, setItems] = useState<WorkoutItem[]>(() => workout?.items ?? []);
+  const [dirty, setDirty] = useState(false);
+  const steps = buildSteps(items, s.exercises);
 
   const [idx, setIdx] = useState(0);
   const [phase, setPhase] = useState<"work" | "rest" | "done">("work");
