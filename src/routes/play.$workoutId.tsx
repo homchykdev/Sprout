@@ -57,6 +57,15 @@ function Player() {
   const [phase, setPhase] = useState<"work" | "rest" | "done">("work");
   const [left, setLeft] = useState(0);
   const [quit, setQuit] = useState(false);
+  /** Ids of open UI (dialogs/sheets) that hold the timer; auto-pause covers focus loss. */
+  const [pauseSources, setPauseSources] = useState<string[]>([]);
+  const [autoPaused, setAutoPaused] = useState(false);
+  const paused = phase !== "done" && (pauseSources.length > 0 || autoPaused);
+  const addPause = (id: string) => setPauseSources((xs) => (xs.includes(id) ? xs : [...xs, id]));
+  const removePause = (id: string) => setPauseSources((xs) => xs.filter((x) => x !== id));
+  // Pause inside the auto-pause overlay counts toward the session duration as paused time.
+  const pausedSince = useRef<number | null>(null);
+  const pausedMs = useRef(0);
   const [result, setResult] = useState<{
     log: SessionLog;
     streakBefore: number;
@@ -71,6 +80,33 @@ function Player() {
     else setLeft(step.item.rest);
   }, [idx, phase, step]);
 
+  // ---- pause bookkeeping: stop speech, count paused time ----
+  useEffect(() => {
+    stopSpeech();
+    if (paused) {
+      if (pausedSince.current === null) pausedSince.current = Date.now();
+      return;
+    }
+    if (pausedSince.current !== null) {
+      pausedMs.current += Date.now() - pausedSince.current;
+      pausedSince.current = null;
+    }
+  }, [paused]);
+  useEffect(() => {
+    // The app lost the screen (backgrounded, tab hidden, another app) — freeze the session
+    // until the user explicitly resumes on the overlay.
+    const onHide = () => setAutoPaused(true);
+    window.addEventListener("blur", onHide);
+    const onVis = () => {
+      if (document.visibilityState === "hidden") onHide();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.removeEventListener("blur", onHide);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, []);
+
   // ---- voice & sound ----
   const muted = useApp((x) => x.voice.muted);
   useEffect(() => {
@@ -78,7 +114,7 @@ function Player() {
     return () => stopSpeech();
   }, []);
   useEffect(() => {
-    if (!step || phase === "done") return;
+    if (!step || phase === "done" || paused) return;
     const amount = (st: Step) =>
       st.ex.mode === "time" ? `${st.item.seconds} секунд` : `${st.item.reps} повторений`;
     if (phase === "work") {
@@ -96,7 +132,7 @@ function Player() {
         );
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [idx, phase]);
+  }, [idx, phase, paused]);
   useEffect(() => {
     if (!step || phase === "done" || left <= 0) return;
     const timedWork = phase === "work" && step.ex.mode === "time";
@@ -112,14 +148,14 @@ function Player() {
   useEffect(() => {
     const v = useApp.getState().voice;
     const bpm = step?.item.bpm ?? step?.ex.bpm;
-    if (!step || phase !== "work" || !bpm || muted || !v.metronome) return;
+    if (paused || !step || phase !== "work" || !bpm || muted || !v.metronome) return;
     const t = setInterval(() => beep("metro"), 60000 / Math.max(20, bpm));
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [idx, phase, muted]);
+  }, [idx, phase, muted, paused]);
 
   useEffect(() => {
-    if (phase === "done" || !step) return;
+    if (paused || phase === "done" || !step) return;
     if (phase === "work" && step.ex.mode !== "time") return;
     if (left <= 0) return;
     const t = setTimeout(() => {
@@ -131,7 +167,7 @@ function Player() {
     }, 1000);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [left, phase]);
+  }, [left, phase, paused]);
 
   function finish() {
     const st = useApp.getState();
@@ -148,7 +184,10 @@ function Player() {
       date: new Date().toISOString(),
       workoutId,
       workoutName: workout!.name,
-      durationSec: Math.round((Date.now() - startedAt.current) / 1000),
+      durationSec: Math.max(
+        0,
+        Math.round((Date.now() - startedAt.current - pausedMs.current) / 1000),
+      ),
       xp,
       sets,
     };
@@ -232,10 +271,18 @@ function Player() {
           onAdjust={(d) => setLeft((l) => Math.max(1, Math.min(600, l + d)))}
         />
       ) : (
-        <WorkView key={idx} step={step!} left={left} onDone={advance} />
+        <WorkView key={idx} step={step!} left={left} onDone={advance} paused={paused} />
       )}
 
-      <Dialog open={quit} onOpenChange={setQuit}>
+      {/* Quit dialog doubles as a pause: while it is open the countdown is frozen. */}
+      <Dialog
+        open={quit}
+        onOpenChange={(o) => {
+          setQuit(o);
+          if (o) addPause("quit");
+          else removePause("quit");
+        }}
+      >
         <DialogContent className="rounded-3xl text-center">
           <div className="flex justify-center">
             <Mascot mood="sad" size={90} />
@@ -244,6 +291,9 @@ function Player() {
           <p className="text-muted-foreground">
             Ты уже прошёл {Math.round(progress * 100)}%. Если выйдешь сейчас — прогресс не
             сохранится.
+          </p>
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Тренировка на паузе — закрой окно, чтобы продолжить
           </p>
           <TapButton size="lg" onClick={() => setQuit(false)}>
             Продолжить
@@ -256,6 +306,22 @@ function Player() {
           </button>
         </DialogContent>
       </Dialog>
+
+      {/* Auto-pause (tab hidden / app backgrounded): explicit resume, nothing auto-runs. */}
+      {autoPaused && !quit && (
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-6 bg-background/90 p-8 text-center backdrop-blur-sm">
+          <Mascot mood="happy" size={120} />
+          <div>
+            <p className="text-2xl font-extrabold tracking-tight">Пауза</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Ты вышел из приложения — таймер заморожен на {Math.round(progress * 100)}% пути
+            </p>
+          </div>
+          <TapButton size="lg" className="w-full max-w-64" onClick={() => setAutoPaused(false)}>
+            Продолжить
+          </TapButton>
+        </div>
+      )}
     </div>
   );
 }
@@ -322,7 +388,17 @@ function FileMedia({ ex }: { ex: Exercise }) {
   );
 }
 
-function WorkView({ step, left, onDone }: { step: Step; left: number; onDone: () => void }) {
+function WorkView({
+  step,
+  left,
+  onDone,
+  paused,
+}: {
+  step: Step;
+  left: number;
+  onDone: () => void;
+  paused: boolean;
+}) {
   const { ex, item, set } = step;
   const [open, setOpen] = useState(false);
   const timed = ex.mode === "time";
@@ -335,7 +411,7 @@ function WorkView({ step, left, onDone }: { step: Step; left: number; onDone: ()
   const pulse = useRef<HTMLSpanElement>(null);
   useEffect(() => {
     const v = useApp.getState().voice;
-    if (!rhythm || muted || !v.metronome) return;
+    if (!rhythm || muted || !v.metronome || paused) return;
     const onBeat = () => {
       const el = pulse.current;
       if (!el) return;
@@ -347,7 +423,7 @@ function WorkView({ step, left, onDone }: { step: Step; left: number; onDone: ()
     p.start();
     return () => p.stop();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rhythm?.join(","), muted]);
+  }, [rhythm?.join(","), muted, paused]);
   const rhythmActive = !!rhythm && metronomeOn && !muted;
   return (
     <div className="animate-rise flex flex-1 flex-col px-5 pb-6">
