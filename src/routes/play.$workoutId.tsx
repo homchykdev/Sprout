@@ -7,6 +7,7 @@ import {
   Eye,
   Expand,
   SkipForward,
+  Undo2,
   Volume2,
   VolumeX,
   X,
@@ -246,6 +247,18 @@ function Player() {
     }
   }
 
+  /** One step back: from rest — redo the just-finished set, from work — the previous set. */
+  function goBack() {
+    if (phase === "rest") {
+      setPhase("work");
+      return;
+    }
+    if (phase === "work" && idx > 0) {
+      setIdx((i) => i - 1);
+      setPhase("work");
+    }
+  }
+
   if (!workout || !steps.length)
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-4 p-6 text-center">
@@ -284,6 +297,14 @@ function Player() {
         <span className="text-sm font-bold tabular text-muted-foreground">
           {idx + 1}/{steps.length}
         </span>
+        <button
+          onClick={goBack}
+          disabled={phase === "prep" || (phase === "work" && idx === 0)}
+          aria-label="К предыдущему упражнению"
+          className="press text-muted-foreground disabled:opacity-30"
+        >
+          <Undo2 className="h-6 w-6" />
+        </button>
         <button
           aria-label={muted ? "Включить звук" : "Выключить звук"}
           className="press text-muted-foreground"
