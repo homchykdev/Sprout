@@ -166,11 +166,14 @@ function Player() {
       } else speak(`${intro}${step.ex.name}. ${amount(step)}.`, { interrupt: true });
     } else {
       const nx = steps[idx + 1];
-      if (nx)
+      if (nx) {
         speak(
           `Отдых. Далее: ${nx.ex.name}, ${amount(nx)}.${nx.set === 1 && nx.ex.steps[0] ? " " + nx.ex.steps[0] : ""}`,
           { interrupt: true },
         );
+        // Frequent mistakes of the upcoming exercise, queued after the intro (no interrupt).
+        for (const m of nx.ex.mistakes.slice(0, 2)) speak(m);
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idx, phase, paused]);
