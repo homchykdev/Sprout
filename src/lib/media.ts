@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { convertVideo, probeVideo, VIDEO_MAX_BYTES, VIDEO_MAX_SEC } from "./ffmpeg";
 import { convertVideoLocal, webCodecsAvailable, type DeviceOpts } from "./transcode";
+import { convertVideoMedia3, media3PluginAvailable } from "./native-transcode";
 import { logWarn } from "./logger";
 import type { PoseSpec, PoseStrain, PoseView } from "./pose";
 import {
@@ -387,7 +388,7 @@ export async function addFiles(
       const cloudOut = opts?.ffmpegOut;
       const cloudOk = !!cloudKey && !!cloudOptions?.length;
       const path = pickTranscodePath(opts?.transcodeMode ?? "device", {
-        media3: false,
+        media3: media3PluginAvailable(),
         webcodecs: webCodecsAvailable(),
         cloud: cloudOk,
       });
@@ -404,6 +405,27 @@ export async function addFiles(
           srcBps,
           targetVideoBitrate(srcBps, probe?.width || 1080, probe?.height || 1920, 30, device.bitrate),
         );
+      if (path === "media3") {
+        if (!worthIt) {
+          await putMedia({ ...base, kind, mime: f.type, blob: f });
+          added.push(id);
+          continue;
+        }
+        try {
+          const out = await convertVideoMedia3(f, device);
+          if (!out) {
+            await putMedia({ ...base, kind, mime: f.type, blob: f });
+            added.push(id);
+            continue;
+          }
+          await putMedia({ ...base, kind: out.kind, mime: out.mime, blob: out.blob });
+          added.push(id);
+          converted.push(id);
+          continue;
+        } catch (e) {
+          logWarn("media", "Media3 конвертация видео не удалась", e);
+        }
+      }
       if (path === "webcodecs") {
         if (!worthIt) {
           await putMedia({ ...base, kind, mime: f.type, blob: f });
