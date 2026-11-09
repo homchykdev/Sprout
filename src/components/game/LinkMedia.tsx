@@ -279,49 +279,14 @@ export function LinkMedia({
       />
     );
   }
-  // Generic iframe (Kinescope, etc.)
-  // If controls are requested → give full player UI (pause, seek, volume).
-  // If controls are NOT requested (demo mode) → kinescope `background=1` (autostart + muted + loop, no UI).
   return (
     <iframe
       className={box}
-      src={withPlayerParams(k.url, { autoplay, muted, controls })}
+      src={k.url}
       allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
       allowFullScreen
       referrerPolicy="no-referrer"
       title="Медиа"
     />
   );
-}
-
-/**
- * Embed params for generic iframe players.
- * Kinescope (the common ru host here) supports URL params:
- * - controls requested → `controls=1&autoplay=1/0&muted=1/0` (full player UI).
- * - controls NOT requested (demo) → `background=1&playsinline=1&t=0` (no click-pause, no seek bar, no volume).
- * Other hosts get standard `autoplay/muted/loop`.
- */
-function withPlayerParams(
-  url: string,
-  flags: { autoplay: boolean; muted: boolean; controls: boolean },
-): string {
-  const u = new URL(url);
-  const isKinescope = /(^|\.)kinescope\.(io|ru|com)$/i.test(u.hostname);
-  if (isKinescope) {
-    if (!flags.controls) {
-      u.searchParams.set("background", "1");
-      // Force start from the beginning instead of resuming last watch position.
-      if (!u.searchParams.has("t")) u.searchParams.set("t", "0");
-    } else {
-      u.searchParams.set("controls", "1");
-      u.searchParams.set("autoplay", flags.autoplay ? "1" : "0");
-      u.searchParams.set("muted", flags.muted ? "1" : "0");
-    }
-    u.searchParams.set("playsinline", "1");
-  } else {
-    u.searchParams.set("autoplay", flags.autoplay ? "1" : "0");
-    u.searchParams.set("muted", flags.muted ? "1" : "0");
-    u.searchParams.set("loop", "1");
-  }
-  return u.toString();
 }

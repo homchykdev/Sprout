@@ -305,7 +305,14 @@ function Player() {
   if (phase === "done" && result)
     return (
       <>
-        <Summary result={result} onDone={() => nav({ to: "/" })} />
+        <Summary
+          result={result}
+          onDone={() => {
+            // Explicit stop: the announce-effect cleanup may race the route unmount.
+            stopSpeech();
+            nav({ to: "/" });
+          }}
+        />
         <Dialog
           open={savePrompt}
           onOpenChange={(o) => {
@@ -448,7 +455,10 @@ function Player() {
           </TapButton>
           <button
             className="py-2 text-sm font-bold uppercase tracking-wide text-destructive"
-            onClick={() => nav({ to: "/" })}
+            onClick={() => {
+              stopSpeech();
+              nav({ to: "/" });
+            }}
           >
             Выйти
           </button>

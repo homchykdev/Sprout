@@ -18,6 +18,12 @@ let nativeSpeechGeneration = 0;
  */
 const webUtterances = new Set<SpeechSynthesisUtterance>();
 /**
+ * Interrupt-speak delays its start by `SPEAK_AFTER_CANCEL_MS`. If `stopSpeech`
+ * fires in that window (e.g. leaving the workout), the timer must be cleared —
+ * otherwise the utterance starts right after the cancel and keeps talking.
+ */
+const pendingInterruptStarts = new Set<ReturnType<typeof setTimeout>>();
+/**
  * Calling `cancel()` and `speak()` in the same tick wedges Chrome/Android's
  * engine after a few repeats (queue stuck "speaking", no audio). The tiny delay
  * between the two lets the engine settle, and `resume()` clears the paused
@@ -118,7 +124,11 @@ export function speak(text: string, opts: { interrupt?: boolean } = {}) {
     } catch {
       /* noop */
     }
-    setTimeout(start, SPEAK_AFTER_CANCEL_MS);
+    const id = setTimeout(() => {
+      pendingInterruptStarts.delete(id);
+      start();
+    }, SPEAK_AFTER_CANCEL_MS);
+    pendingInterruptStarts.add(id);
   } else {
     start();
   }
@@ -134,7 +144,11 @@ export function stopSpeech() {
     );
     return;
   }
-  if (typeof speechSynthesis !== "undefined") speechSynthesis.cancel();
+  if (typeof speechSynthesis !== "undefined") {
+    for (const id of pendingInterruptStarts) clearTimeout(id);
+    pendingInterruptStarts.clear();
+    speechSynthesis.cancel();
+  }
 }
 
 /** Short synthesized beep. kind: tick (countdown), go (start), end (finish), metro (tempo). */
