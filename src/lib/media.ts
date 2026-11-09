@@ -1,7 +1,17 @@
 import { useEffect, useState } from "react";
 import { convertVideo, probeVideo, VIDEO_MAX_BYTES, VIDEO_MAX_SEC } from "./ffmpeg";
+import { convertVideoLocal, webCodecsAvailable, type DeviceOpts } from "./transcode";
 import { logWarn } from "./logger";
 import type { PoseSpec, PoseStrain, PoseView } from "./pose";
+import {
+  pickTranscodePath,
+  targetVideoBitrate,
+  worthTranscoding,
+  type BitrateLevel,
+  type DeviceCodec,
+  type DeviceFps,
+  type TranscodeMode,
+} from "./video-rules";
 import { isHeicFile } from "./video-rules";
 
 /** User photos/videos live in IndexedDB (too large for the main store). */
@@ -273,9 +283,15 @@ export interface AddResult {
 }
 
 export interface TranscodeOpts {
-  ffmpegKey?: string;
-  ffmpegOptions?: string[];
-  ffmpegOut?: string;
+  /** Where conversion runs: device (default), cloud, or off. */
+  transcodeMode?: TranscodeMode | undefined;
+  deviceCodec?: DeviceCodec | undefined;
+  deviceBitrate?: BitrateLevel | undefined;
+  deviceFps?: DeviceFps | undefined;
+  /** Cloud fallback: ffmpeg-api.com key (own key, on-device). */
+  ffmpegKey?: string | undefined;
+  ffmpegOptions?: string[] | undefined;
+  ffmpegOut?: string | undefined;
 }
 
 /** HEIC/HEIF from iPhones: browsers can't decode them — converted to JPEG on import. */
@@ -366,14 +382,54 @@ export async function addFiles(
         tooHeavy.push(f.name);
         continue;
       }
-      if (opts?.ffmpegKey && opts?.ffmpegOptions?.length) {
+      const cloudKey = opts?.ffmpegKey;
+      const cloudOptions = opts?.ffmpegOptions;
+      const cloudOut = opts?.ffmpegOut;
+      const cloudOk = !!cloudKey && !!cloudOptions?.length;
+      const path = pickTranscodePath(opts?.transcodeMode ?? "device", {
+        media3: false,
+        webcodecs: webCodecsAvailable(),
+        cloud: cloudOk,
+      });
+      const device: DeviceOpts = {
+        codec: opts?.deviceCodec ?? "auto",
+        bitrate: opts?.deviceBitrate ?? "standard",
+        fps: opts?.deviceFps ?? "asis",
+      };
+      // Already-efficient sources only lose quality from re-encoding — skip.
+      const srcBps = probe?.duration ? Math.round((f.size * 8) / probe.duration) : 0;
+      const worthIt =
+        srcBps > 0 &&
+        worthTranscoding(
+          srcBps,
+          targetVideoBitrate(srcBps, probe?.width || 1080, probe?.height || 1920, 30, device.bitrate),
+        );
+      if (path === "webcodecs") {
+        if (!worthIt) {
+          await putMedia({ ...base, kind, mime: f.type, blob: f });
+          added.push(id);
+          continue;
+        }
         try {
-          const out = await convertVideo(
-            f,
-            opts.ffmpegKey,
-            opts.ffmpegOptions,
-            opts.ffmpegOut ?? "webm",
-          );
+          const out = await convertVideoLocal(f, device);
+          if (!out) {
+            // mediabunny's exact stats say there is no meaningful win either.
+            await putMedia({ ...base, kind, mime: f.type, blob: f });
+            added.push(id);
+            continue;
+          }
+          await putMedia({ ...base, kind: out.kind, mime: out.mime, blob: out.blob });
+          added.push(id);
+          converted.push(id);
+          continue;
+        } catch (e) {
+          // On-device conversion failed — cloud or original below.
+          logWarn("media", "Локальная конвертация видео не удалась", e);
+        }
+      }
+      if (cloudKey && cloudOptions && cloudOptions.length && path !== "original") {
+        try {
+          const out = await convertVideo(f, cloudKey, cloudOptions, cloudOut ?? "webm");
           await putMedia({ ...base, kind: out.kind, mime: out.mime, blob: out.blob });
           added.push(id);
           converted.push(id);

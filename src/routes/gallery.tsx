@@ -159,6 +159,10 @@ export function AlbumView({
   onExitCompare?: () => void;
 }) {
   const items = useMedia(album);
+  const transcodeMode = useApp((s) => s.transcodeMode);
+  const deviceCodec = useApp((s) => s.deviceCodec);
+  const deviceBitrate = useApp((s) => s.deviceBitrate);
+  const deviceFps = useApp((s) => s.deviceFps);
   const ffmpegKey = useApp((s) => s.ffmpegKey);
   const ffmpegOptions = useApp((s) => s.ffmpegOptions);
   const ffmpegOut = useApp((s) => s.ffmpegOut);
@@ -201,11 +205,15 @@ export function AlbumView({
     if (!fs?.length) return;
     setBusy(true);
     try {
-      const { added, converted, skipped, tooHeavy } = await addFiles(
-        [...fs],
-        album,
-        ffmpegKey ? { ffmpegKey, ffmpegOptions, ffmpegOut } : undefined,
-      );
+      const { added, converted, skipped, tooHeavy } = await addFiles([...fs], album, {
+        transcodeMode,
+        deviceCodec,
+        deviceBitrate,
+        deviceFps,
+        ffmpegKey: ffmpegKey || undefined,
+        ffmpegOptions,
+        ffmpegOut,
+      });
       if (added.length > 1) {
         // Several angles at once = one group (front/side/back).
         await groupItems(added);
