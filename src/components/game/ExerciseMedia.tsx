@@ -4,15 +4,20 @@ import { signedVideo } from "@/lib/clients";
 import { useExerciseMedia } from "@/components/game/ExerciseThumb";
 import { useBlobUrl } from "@/lib/media";
 import { parseLink } from "@/lib/embed";
+import { useApp } from "@/lib/store";
 import type { Exercise } from "@/lib/types";
 
 /**
  * The exercise's media in a fixed 4:3 frame: own upload → embedded link →
  * hosted file (signed) → emoji fallback. Shared by the player and the full view.
+ * The embedded player keeps its native controls (this surface's progress bar and
+ * pause/seek come from the player itself) and honours the persisted
+ * `voice.videoSound` toggle.
  */
 export function ExerciseMedia({ ex }: { ex: Exercise }) {
   const own = useExerciseMedia(ex.mediaId);
   const ownUrl = useBlobUrl(own?.blob);
+  const videoSound = useApp((x) => x.voice.videoSound);
   if (own && ownUrl)
     return (
       <div className="relative aspect-[4/3] w-full overflow-hidden rounded-3xl bg-muted">
@@ -22,9 +27,10 @@ export function ExerciseMedia({ ex }: { ex: Exercise }) {
           <video
             src={ownUrl}
             autoPlay
-            muted
+            muted={!videoSound}
             loop
             playsInline
+            controls
             className="h-full w-full object-cover"
           />
         )}
@@ -34,13 +40,13 @@ export function ExerciseMedia({ ex }: { ex: Exercise }) {
   if (link && link.type !== "video")
     return (
       <div className="relative aspect-[4/3] w-full overflow-hidden rounded-3xl bg-muted">
-        <LinkMedia url={ex.videoUrl!} clips={ex.clips} />
+        <LinkMedia url={ex.videoUrl!} clips={ex.clips} muted={!videoSound} controls />
       </div>
     );
-  return <FileMedia ex={ex} />;
+  return <FileMedia ex={ex} muted={!videoSound} />;
 }
 
-function FileMedia({ ex }: { ex: Exercise }) {
+function FileMedia({ ex, muted }: { ex: Exercise; muted: boolean }) {
   const [src, setSrc] = useState<string | undefined>();
   const [failed, setFailed] = useState(false);
   useEffect(() => {
@@ -57,7 +63,13 @@ function FileMedia({ ex }: { ex: Exercise }) {
   return (
     <div className="relative aspect-[4/3] w-full overflow-hidden rounded-3xl bg-muted">
       {src && !failed ? (
-        <LinkMedia url={src} clips={ex.clips} onFail={() => setFailed(true)} />
+        <LinkMedia
+          url={src}
+          clips={ex.clips}
+          muted={muted}
+          controls
+          onFail={() => setFailed(true)}
+        />
       ) : (
         <div className="flex h-full flex-col items-center justify-center gap-2">
           <span className="animate-float text-8xl">{ex.emoji ?? "🏋️"}</span>

@@ -11,6 +11,14 @@ import {
   VolumeX,
   X,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { beep, fanfare, primeAudio, speak, stopSpeech } from "@/lib/voice";
 import { createRhythmPlayer } from "@/lib/rhythm";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -135,8 +143,12 @@ function Player() {
   }, [paused]);
   useEffect(() => {
     // The app lost the screen (backgrounded, tab hidden, another app) — freeze the session
-    // until the user explicitly resumes on the overlay.
-    const onHide = () => setAutoPaused(true);
+    // until the user explicitly resumes on the overlay. Focus moved INTO the embedded
+    // video player also blurs the window, but the user is right here watching the demo.
+    const onHide = () => {
+      if (document.activeElement instanceof HTMLIFrameElement) return;
+      setAutoPaused(true);
+    };
     window.addEventListener("blur", onHide);
     const onVis = () => {
       if (document.visibilityState === "hidden") onHide();
@@ -150,6 +162,7 @@ function Player() {
 
   // ---- voice & sound ----
   const muted = useApp((x) => x.voice.muted);
+  const videoSound = useApp((x) => x.voice.videoSound);
   useEffect(() => {
     primeAudio();
     return () => stopSpeech();
@@ -385,17 +398,38 @@ function Player() {
         <span className="text-sm font-bold tabular text-muted-foreground">
           {idx + 1}/{steps.length}
         </span>
-        <button
-          aria-label={muted ? "Включить звук" : "Выключить звук"}
-          className="press text-muted-foreground"
-          onClick={() => {
-            const v = useApp.getState().voice;
-            if (!v.muted) stopSpeech();
-            useApp.getState().set({ voice: { ...v, muted: !v.muted } });
-          }}
-        >
-          {muted ? <VolumeX className="h-6 w-6" /> : <Volume2 className="h-6 w-6" />}
-        </button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button aria-label="Настройки звука" className="press text-muted-foreground">
+              {muted ? <VolumeX className="h-6 w-6" /> : <Volume2 className="h-6 w-6" />}
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="rounded-2xl">
+            <DropdownMenuLabel>Звук</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuCheckboxItem
+              checked={!muted}
+              onCheckedChange={(on) => {
+                const v = useApp.getState().voice;
+                if (!on && !v.muted) stopSpeech();
+                useApp.getState().set({ voice: { ...v, muted: !on } });
+              }}
+              onSelect={(e) => e.preventDefault()}
+            >
+              Озвучка упражнений
+            </DropdownMenuCheckboxItem>
+            <DropdownMenuCheckboxItem
+              checked={videoSound}
+              onCheckedChange={(on) => {
+                const v = useApp.getState().voice;
+                useApp.getState().set({ voice: { ...v, videoSound: on } });
+              }}
+              onSelect={(e) => e.preventDefault()}
+            >
+              Звук из видео
+            </DropdownMenuCheckboxItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {phase === "rest" ? (

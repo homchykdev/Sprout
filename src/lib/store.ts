@@ -62,6 +62,8 @@ export interface WorkoutSettings {
 export interface VoiceSettings {
   enabled: boolean;
   muted: boolean;
+  /** Play the exercise/video demo with its own audio in the player. */
+  videoSound: boolean;
   beeps: boolean;
   metronome: boolean;
   bpm: number;
@@ -130,6 +132,7 @@ export const initialState: AppState = {
   voice: {
     enabled: true,
     muted: false,
+    videoSound: true,
     beeps: true,
     metronome: false,
     bpm: 60,
