@@ -35,11 +35,12 @@ import { TapButton } from "@/components/game/TapButton";
 import { ExerciseFullView } from "@/components/game/ExerciseFullView";
 import { ExerciseThumb } from "@/components/game/ExerciseThumb";
 import { FeedbackEditor, cleanFeedback, toParts } from "@/components/game/FeedbackEditor";
+import { ExercisePicker } from "@/components/game/ExercisePicker";
 import { aiCreateWorkout } from "@/lib/clients";
 import { forecast, nextWorkout, planProgress } from "@/lib/plan";
 import { useApp, uid } from "@/lib/store";
 import { cycleTime, formatSec } from "@/lib/rhythm";
-import { CATEGORIES, MUSCLES, type Workout } from "@/lib/types";
+import { type Exercise, type Workout } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { estimateMinutes } from "@/lib/workout-utils";
 import { TapRhythmRecorder } from "@/components/game/TapRhythmRecorder";
@@ -361,7 +362,8 @@ function WorkoutEditor({ value, onClose }: { value: Workout | null; onClose: () 
   const { exercises, upsertWorkout, deleteWorkout, workouts } = useApp();
   const [w, setW] = useState<Workout | null>(value);
   const [pick, setPick] = useState(false);
-  const [q, setQ] = useState("");
+  /** Exercise opened for preview from the add-exercise picker (not yet added). */
+  const [pickerDetails, setPickerDetails] = useState<Exercise | null>(null);
   /** Item index whose rhythm override is being recorded in the dialog. */
   const [rhythmFor, setRhythmFor] = useState<number | null>(null);
   /** Exercise whose full preview (media, technique) is open. */
@@ -375,6 +377,19 @@ function WorkoutEditor({ value, onClose }: { value: Workout | null; onClose: () 
   const items = w.items;
   const setItems = (x: Workout["items"]) => setW({ ...w, items: x });
   const exOf = (i: number) => exercises.find((e) => e.id === items[i]?.exerciseId);
+  /** Appends an exercise with default targets (from the picker). */
+  const addItem = (e: Exercise) =>
+    setItems([
+      ...items,
+      {
+        exerciseId: e.id,
+        sets: 3,
+        reps: e.reps,
+        seconds: e.seconds,
+        rest: 45,
+        ...(e.bpm ? { bpm: e.bpm } : {}),
+      },
+    ]);
   /** Stable while dragging: "<index>:<exerciseId>" lets drag end map back to indexes. */
   const ids = items.map((it, i) => `${i}:${it.exerciseId}`);
   const onDragEnd = ({ active, over }: DragEndEvent) => {
@@ -586,59 +601,9 @@ function WorkoutEditor({ value, onClose }: { value: Workout | null; onClose: () 
             </div>
           </SortableContext>
         </DndContext>
-        {pick ? (
-          <div className="rounded-2xl border-2 p-2">
-            <input
-              autoFocus
-              className="w-full rounded-xl bg-muted px-3 py-2 outline-none"
-              placeholder="Поиск упражнения"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-            />
-            <div className="mt-2 max-h-56 overflow-y-auto">
-              {exercises
-                .filter((e) => e.name.toLowerCase().includes(q.toLowerCase()))
-                .map((e) => (
-                  <button
-                    key={e.id}
-                    className="flex w-full items-center gap-3 rounded-xl px-2 py-1.5 text-left hover:bg-muted"
-                    onClick={() => {
-                      setItems([
-                        ...items,
-                        {
-                          exerciseId: e.id,
-                          sets: 3,
-                          reps: e.reps,
-                          seconds: e.seconds,
-                          rest: 45,
-                          ...(e.bpm ? { bpm: e.bpm } : {}),
-                        },
-                      ]);
-                      setPick(false);
-                      setQ("");
-                    }}
-                  >
-                    <ExerciseThumb ex={e} className="h-10 w-10" />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate font-semibold">{e.name}</span>
-                      <span className="block truncate text-xs text-muted-foreground">
-                        {CATEGORIES[e.category]} · {e.muscles.map((m) => MUSCLES[m]).join(", ")}
-                      </span>
-                    </span>
-                  </button>
-                ))}
-              {!exercises.some((e) => e.name.toLowerCase().includes(q.toLowerCase())) && (
-                <p className="py-6 text-center text-sm text-muted-foreground">
-                  Ничего не найдено. Создай упражнение на вкладке «Упражнения».
-                </p>
-              )}
-            </div>
-          </div>
-        ) : (
-          <TapButton variant="soft" onClick={() => setPick(true)}>
-            <Plus className="h-4 w-4" /> Добавить упражнение
-          </TapButton>
-        )}
+        <TapButton variant="soft" onClick={() => setPick(true)}>
+          <Plus className="h-4 w-4" /> Добавить упражнение
+        </TapButton>
         <div>
           <p className="mb-2 text-sm font-semibold text-muted-foreground">
             Моя оценка — учитывается при составлении тренировок от ИИ
@@ -697,10 +662,34 @@ function WorkoutEditor({ value, onClose }: { value: Workout | null; onClose: () 
             </DialogContent>
           </Dialog>
         )}
+        <ExercisePicker
+          open={pick}
+          onOpenChange={setPick}
+          onPick={addItem}
+          onPreview={(ex) => setPickerDetails(ex)}
+        />
         <ExerciseFullView
-          ex={exercises.find((e) => e.id === detailsId) ?? null}
-          open={detailsId !== null}
-          onOpenChange={(o) => !o && setDetailsId(null)}
+          ex={pickerDetails ?? exercises.find((e) => e.id === detailsId) ?? null}
+          open={pickerDetails !== null || detailsId !== null}
+          onOpenChange={(o) => {
+            if (!o) {
+              setPickerDetails(null);
+              setDetailsId(null);
+            }
+          }}
+          action={
+            pickerDetails ? (
+              <TapButton
+                variant="primary"
+                onClick={() => {
+                  addItem(pickerDetails);
+                  setPickerDetails(null); // keep the picker open for picking more
+                }}
+              >
+                <Plus className="h-4 w-4" /> Добавить
+              </TapButton>
+            ) : undefined
+          }
         />
       </DialogContent>
     </Dialog>

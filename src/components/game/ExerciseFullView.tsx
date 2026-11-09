@@ -1,4 +1,5 @@
 import { AlertTriangle } from "lucide-react";
+import type { ReactNode } from "react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { ExerciseMedia } from "@/components/game/ExerciseMedia";
 import type { Exercise } from "@/lib/types";
@@ -12,10 +13,13 @@ export function ExerciseFullView({
   ex,
   open,
   onOpenChange,
+  action,
 }: {
   ex: Exercise | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Optional call-to-action rendered at the bottom, e.g. "add to workout" from a picker. */
+  action?: ReactNode | undefined;
 }) {
   if (!ex) return null;
   return (
@@ -51,6 +55,7 @@ export function ExerciseFullView({
             ))}
           </div>
         )}
+        {action}
       </DialogContent>
     </Dialog>
   );
