@@ -66,9 +66,10 @@ export function ExercisePicker({
                     onClick={() => onPreview(e)}
                     aria-label={`Просмотреть упражнение ${e.name}`}
                     title="Просмотреть перед добавлением"
-                    className="press mr-2 shrink-0 rounded-full p-2 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-2"
+                    className="press mr-2 flex shrink-0 items-center gap-1.5 rounded-full px-3 py-2 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-2"
                   >
-                    <Eye className="h-4 w-4" />
+                    <Eye className="h-4 w-4" aria-hidden />
+                    Просмотреть
                   </button>
                 )}
               </li>
