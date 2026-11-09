@@ -19,6 +19,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Slider } from "@/components/ui/slider";
 import { beep, fanfare, primeAudio, speak, stopSpeech } from "@/lib/voice";
 import { createRhythmPlayer } from "@/lib/rhythm";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -163,6 +164,7 @@ function Player() {
   // ---- voice & sound ----
   const muted = useApp((x) => x.voice.muted);
   const videoSound = useApp((x) => x.voice.videoSound);
+  const volume = useApp((x) => x.voice.volume);
   useEffect(() => {
     primeAudio();
     return () => stopSpeech();
@@ -428,6 +430,23 @@ function Player() {
             >
               Звук из видео
             </DropdownMenuCheckboxItem>
+            <div className="px-2 pb-1.5">
+              <label className="flex items-center justify-between text-xs font-medium">
+                Громкость сигналов
+                <span className="tabular text-muted-foreground">{Math.round(volume * 100)}%</span>
+              </label>
+              <Slider
+                className="mt-1.5"
+                min={0.05}
+                max={1}
+                step={0.05}
+                value={[volume]}
+                onValueChange={([r]) => {
+                  const v = useApp.getState().voice;
+                  useApp.getState().set({ voice: { ...v, volume: r ?? 0.6 } });
+                }}
+              />
+            </div>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
