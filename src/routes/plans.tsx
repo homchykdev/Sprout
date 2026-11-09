@@ -1,9 +1,25 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
-  ArrowDown,
-  ArrowUp,
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
   AudioLines,
   ChevronRight,
+  GripVertical,
   Pencil,
   Play,
   Plus,
@@ -11,17 +27,19 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PlanEditor } from "@/components/plans/PlanEditor";
 import { TapButton } from "@/components/game/TapButton";
+import { ExerciseFullView } from "@/components/game/ExerciseFullView";
+import { ExerciseThumb } from "@/components/game/ExerciseThumb";
 import { FeedbackEditor, cleanFeedback, toParts } from "@/components/game/FeedbackEditor";
 import { aiCreateWorkout } from "@/lib/clients";
 import { forecast, nextWorkout, planProgress } from "@/lib/plan";
 import { useApp, uid } from "@/lib/store";
 import { cycleTime, formatSec } from "@/lib/rhythm";
-import type { Workout } from "@/lib/types";
+import { CATEGORIES, MUSCLES, type Workout } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { estimateMinutes } from "@/lib/workout-utils";
 import { TapRhythmRecorder } from "@/components/game/TapRhythmRecorder";
@@ -301,6 +319,44 @@ function PlansContent() {
   );
 }
 
+/** Dnd-kit wrapper: makes its children sortable by id ("i:exerciseId"). */
+function SortableRow({
+  id,
+  className,
+  children,
+}: {
+  id: string;
+  className?: string;
+  children: ReactNode;
+}) {
+  const { setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Translate.toString(transform), transition }}
+      className={cn(className, isDragging && "relative z-10 shadow-lg")}
+    >
+      {children}
+    </div>
+  );
+}
+
+/** Drag handle of one workout item (the only element with the sortable listeners). */
+function ItemGrip({ id, position }: { id: string; position: number }) {
+  const { attributes, listeners, setActivatorNodeRef } = useSortable({ id });
+  return (
+    <button
+      ref={setActivatorNodeRef}
+      {...attributes}
+      {...listeners}
+      aria-label={`Перетащить упражнение ${position}`}
+      className="press -ml-1 flex h-11 w-7 shrink-0 touch-none items-center justify-center text-muted-foreground/70 hover:text-foreground focus-visible:text-foreground focus-visible:outline-2"
+    >
+      <GripVertical className="h-4 w-4" />
+    </button>
+  );
+}
+
 function WorkoutEditor({ value, onClose }: { value: Workout | null; onClose: () => void }) {
   const { exercises, upsertWorkout, deleteWorkout, workouts } = useApp();
   const [w, setW] = useState<Workout | null>(value);
@@ -308,15 +364,24 @@ function WorkoutEditor({ value, onClose }: { value: Workout | null; onClose: () 
   const [q, setQ] = useState("");
   /** Item index whose rhythm override is being recorded in the dialog. */
   const [rhythmFor, setRhythmFor] = useState<number | null>(null);
+  /** Exercise whose full preview (media, technique) is open. */
+  const [detailsId, setDetailsId] = useState<string | null>(null);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
   if (value && w?.id !== value.id) setW(value);
   if (!w || !value) return null;
   const items = w.items;
   const setItems = (x: Workout["items"]) => setW({ ...w, items: x });
   const exOf = (i: number) => exercises.find((e) => e.id === items[i]?.exerciseId);
-  const move = (i: number, d: number) => {
-    const x = [...items];
-    [x[i], x[i + d]] = [x[i + d]!, x[i]!];
-    setItems(x);
+  /** Stable while dragging: "<index>:<exerciseId>" lets drag end map back to indexes. */
+  const ids = items.map((it, i) => `${i}:${it.exerciseId}`);
+  const onDragEnd = ({ active, over }: DragEndEvent) => {
+    if (!over || active.id === over.id) return;
+    const from = Number(String(active.id).split(":")[0]);
+    const to = Number(String(over.id).split(":")[0]);
+    setItems(arrayMove(items, from, to));
   };
   const num =
     "w-14 rounded-xl border-2 bg-card px-2 py-1 text-center text-sm tabular outline-none focus:border-primary";
@@ -340,159 +405,187 @@ function WorkoutEditor({ value, onClose }: { value: Workout | null; onClose: () 
             onChange={(e) => setW({ ...w, name: e.target.value })}
           />
         </div>
-        <div className="space-y-2">
-          {items.map((it, i) => {
-            const ex = exercises.find((e) => e.id === it.exerciseId);
-            return (
-              <div key={i} className="rounded-2xl border-2 p-3">
-                <div className="flex items-center gap-2">
-                  <span className="flex-1 truncate font-semibold">
-                    {ex?.emoji} {ex?.name ?? "Удалено"}
-                  </span>
-                  <button
-                    disabled={i === 0}
-                    onClick={() => move(i, -1)}
-                    className="p-1 text-muted-foreground disabled:opacity-30"
-                  >
-                    <ArrowUp className="h-4 w-4" />
-                  </button>
-                  <button
-                    disabled={i === items.length - 1}
-                    onClick={() => move(i, 1)}
-                    className="p-1 text-muted-foreground disabled:opacity-30"
-                  >
-                    <ArrowDown className="h-4 w-4" />
-                  </button>
-                  <button
-                    onClick={() => setItems(items.filter((_, j) => j !== i))}
-                    className="p-1 text-muted-foreground"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                  <label className="flex items-center gap-1">
-                    Подходы{" "}
-                    <input
-                      type="number"
-                      className={num}
-                      value={it.sets}
-                      onChange={(e) =>
-                        setItems(
-                          items.map((x, j) => (j === i ? { ...x, sets: +e.target.value } : x)),
-                        )
-                      }
-                    />
-                  </label>
-                  {ex?.mode === "time" ? (
-                    <label className="flex items-center gap-1">
-                      Сек{" "}
-                      <input
-                        type="number"
-                        className={num}
-                        value={it.seconds}
-                        onChange={(e) =>
-                          setItems(
-                            items.map((x, j) => (j === i ? { ...x, seconds: +e.target.value } : x)),
-                          )
-                        }
-                      />
-                    </label>
-                  ) : (
-                    <label className="flex items-center gap-1">
-                      Повт.{" "}
-                      <input
-                        type="number"
-                        className={num}
-                        value={it.reps}
-                        onChange={(e) =>
-                          setItems(
-                            items.map((x, j) => (j === i ? { ...x, reps: +e.target.value } : x)),
-                          )
-                        }
-                      />
-                    </label>
-                  )}
-                  <label className="flex items-center gap-1">
-                    Отдых{" "}
-                    <input
-                      type="number"
-                      className={num}
-                      value={it.rest}
-                      onChange={(e) =>
-                        setItems(
-                          items.map((x, j) => (j === i ? { ...x, rest: +e.target.value } : x)),
-                        )
-                      }
-                    />
-                  </label>
-                  <label
-                    className="flex items-center gap-1"
-                    title="Темп метронома для этой тренировки. Пусто — рекомендованный темп упражнения."
-                  >
-                    Темп{" "}
-                    <input
-                      type="number"
-                      className={num}
-                      placeholder={ex?.bpm ? `♩${ex.bpm}` : ex?.rhythm?.length ? "♪ ритм" : "—"}
-                      value={it.bpm ?? ""}
-                      onChange={(e) =>
-                        setItems(
-                          items.map((x, j) =>
-                            j === i
-                              ? {
-                                  ...x,
-                                  bpm: e.target.value
-                                    ? Math.min(200, Math.max(20, +e.target.value))
-                                    : undefined,
-                                  // bpm and tapped rhythm are mutually exclusive.
-                                  rhythm: e.target.value ? undefined : x.rhythm,
-                                }
-                              : x,
-                          ),
-                        )
-                      }
-                    />
-                  </label>
-                  {(ex?.rhythm?.length || it.rhythm) && !it.bpm && (
-                    <>
-                      <button
-                        onClick={() => setRhythmFor(i)}
-                        title={
-                          it.rhythm
-                            ? `Свой ритм пункта: цикл ${formatSec(cycleTime(it.rhythm))}`
-                            : "Настучать свой ритм для этого пункта (иначе берётся ритм упражнения)"
-                        }
-                        className={cn(
-                          "press flex items-center gap-1 rounded-full border-2 px-2.5 py-1 font-semibold",
-                          it.rhythm
-                            ? "border-primary bg-primary-soft text-primary-shade"
-                            : "border-border text-muted-foreground",
-                        )}
-                      >
-                        <AudioLines className="h-3.5 w-3.5" aria-hidden />
-                        {it.rhythm ? `♪ ${formatSec(cycleTime(it.rhythm))}` : "♪ свой ритм"}
-                      </button>
-                      {it.rhythm && (
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={onDragEnd}
+          accessibility={{
+            screenReaderInstructions: {
+              draggable:
+                "На ручке пункта нажми Enter или Space и используй стрелки, чтобы переставить его.",
+            },
+            announcements: {
+              onDragStart: ({ active }) =>
+                `Захвачено упражнение №${Number(String(active.id).split(":")[0]) + 1}.`,
+              onDragOver: ({ active, over }) =>
+                over
+                  ? `Упражнение №${Number(String(active.id).split(":")[0]) + 1} над позицией №${Number(String(over.id).split(":")[0]) + 1}.`
+                  : "",
+              onDragEnd: () => "Перестановка завершена.",
+              onDragCancel: () => "Перетаскивание отменено.",
+            },
+          }}
+        >
+          <SortableContext items={ids} strategy={verticalListSortingStrategy}>
+            <div className="space-y-2">
+              {items.map((it, i) => {
+                const ex = exercises.find((e) => e.id === it.exerciseId);
+                const id = `${i}:${it.exerciseId}`;
+                return (
+                  <SortableRow key={id} id={id} className="rounded-2xl border-2 p-3">
+                    <div className="flex items-center gap-2">
+                      <ItemGrip id={id} position={i + 1} />
+                      {ex ? (
                         <button
-                          aria-label="Сбросить свой ритм пункта"
-                          onClick={() =>
+                          onClick={() => setDetailsId(ex.id)}
+                          className="press flex min-w-0 flex-1 items-center gap-2 rounded-xl py-1 text-left focus-visible:outline-2"
+                          aria-label={`Подробнее об упражнении ${ex.name}`}
+                        >
+                          <ExerciseThumb ex={ex} className="h-10 w-10" />
+                          <span className="min-w-0 flex-1 truncate font-semibold">{ex.name}</span>
+                        </button>
+                      ) : (
+                        <span className="flex-1 truncate text-sm font-semibold text-destructive">
+                          Упражнение удалено
+                        </span>
+                      )}
+                      <button
+                        onClick={() => setItems(items.filter((_, j) => j !== i))}
+                        className="press rounded-full p-2 text-muted-foreground hover:text-destructive"
+                        aria-label="Убрать упражнение"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                      <label className="flex items-center gap-1">
+                        Подходы{" "}
+                        <input
+                          type="number"
+                          className={num}
+                          value={it.sets}
+                          onChange={(e) =>
                             setItems(
-                              items.map((x, j) => (j === i ? { ...x, rhythm: undefined } : x)),
+                              items.map((x, j) => (j === i ? { ...x, sets: +e.target.value } : x)),
                             )
                           }
-                          className="press rounded-full p-1 text-muted-foreground"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </button>
+                        />
+                      </label>
+                      {ex?.mode === "time" ? (
+                        <label className="flex items-center gap-1">
+                          Сек{" "}
+                          <input
+                            type="number"
+                            className={num}
+                            value={it.seconds}
+                            onChange={(e) =>
+                              setItems(
+                                items.map((x, j) =>
+                                  j === i ? { ...x, seconds: +e.target.value } : x,
+                                ),
+                              )
+                            }
+                          />
+                        </label>
+                      ) : (
+                        <label className="flex items-center gap-1">
+                          Повт.{" "}
+                          <input
+                            type="number"
+                            className={num}
+                            value={it.reps}
+                            onChange={(e) =>
+                              setItems(
+                                items.map((x, j) =>
+                                  j === i ? { ...x, reps: +e.target.value } : x,
+                                ),
+                              )
+                            }
+                          />
+                        </label>
                       )}
-                    </>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+                      <label className="flex items-center gap-1">
+                        Отдых{" "}
+                        <input
+                          type="number"
+                          className={num}
+                          value={it.rest}
+                          onChange={(e) =>
+                            setItems(
+                              items.map((x, j) => (j === i ? { ...x, rest: +e.target.value } : x)),
+                            )
+                          }
+                        />
+                      </label>
+                      <label
+                        className="flex items-center gap-1"
+                        title="Темп метронома для этой тренировки. Пусто — рекомендованный темп упражнения."
+                      >
+                        Темп{" "}
+                        <input
+                          type="number"
+                          className={num}
+                          placeholder={ex?.bpm ? `♩${ex.bpm}` : ex?.rhythm?.length ? "♪ ритм" : "—"}
+                          value={it.bpm ?? ""}
+                          onChange={(e) =>
+                            setItems(
+                              items.map((x, j) =>
+                                j === i
+                                  ? {
+                                      ...x,
+                                      bpm: e.target.value
+                                        ? Math.min(200, Math.max(20, +e.target.value))
+                                        : undefined,
+                                      // bpm and tapped rhythm are mutually exclusive.
+                                      rhythm: e.target.value ? undefined : x.rhythm,
+                                    }
+                                  : x,
+                              ),
+                            )
+                          }
+                        />
+                      </label>
+                      {(ex?.rhythm?.length || it.rhythm) && !it.bpm && (
+                        <>
+                          <button
+                            onClick={() => setRhythmFor(i)}
+                            title={
+                              it.rhythm
+                                ? `Свой ритм пункта: цикл ${formatSec(cycleTime(it.rhythm))}`
+                                : "Настучать свой ритм для этого пункта (иначе берётся ритм упражнения)"
+                            }
+                            className={cn(
+                              "press flex items-center gap-1 rounded-full border-2 px-2.5 py-1 font-semibold",
+                              it.rhythm
+                                ? "border-primary bg-primary-soft text-primary-shade"
+                                : "border-border text-muted-foreground",
+                            )}
+                          >
+                            <AudioLines className="h-3.5 w-3.5" aria-hidden />
+                            {it.rhythm ? `♪ ${formatSec(cycleTime(it.rhythm))}` : "♪ свой ритм"}
+                          </button>
+                          {it.rhythm && (
+                            <button
+                              aria-label="Сбросить свой ритм пункта"
+                              onClick={() =>
+                                setItems(
+                                  items.map((x, j) => (j === i ? { ...x, rhythm: undefined } : x)),
+                                )
+                              }
+                              className="press rounded-full p-1 text-muted-foreground"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </SortableRow>
+                );
+              })}
+            </div>
+          </SortableContext>
+        </DndContext>
         {pick ? (
           <div className="rounded-2xl border-2 p-2">
             <input
@@ -508,7 +601,7 @@ function WorkoutEditor({ value, onClose }: { value: Workout | null; onClose: () 
                 .map((e) => (
                   <button
                     key={e.id}
-                    className="w-full rounded-xl px-3 py-2 text-left text-sm hover:bg-muted"
+                    className="flex w-full items-center gap-3 rounded-xl px-2 py-1.5 text-left hover:bg-muted"
                     onClick={() => {
                       setItems([
                         ...items,
@@ -525,9 +618,20 @@ function WorkoutEditor({ value, onClose }: { value: Workout | null; onClose: () 
                       setQ("");
                     }}
                   >
-                    {e.emoji} {e.name}
+                    <ExerciseThumb ex={e} className="h-10 w-10" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-semibold">{e.name}</span>
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {CATEGORIES[e.category]} · {e.muscles.map((m) => MUSCLES[m]).join(", ")}
+                      </span>
+                    </span>
                   </button>
                 ))}
+              {!exercises.some((e) => e.name.toLowerCase().includes(q.toLowerCase())) && (
+                <p className="py-6 text-center text-sm text-muted-foreground">
+                  Ничего не найдено. Создай упражнение на вкладке «Упражнения».
+                </p>
+              )}
             </div>
           </div>
         ) : (
@@ -593,6 +697,11 @@ function WorkoutEditor({ value, onClose }: { value: Workout | null; onClose: () 
             </DialogContent>
           </Dialog>
         )}
+        <ExerciseFullView
+          ex={exercises.find((e) => e.id === detailsId) ?? null}
+          open={detailsId !== null}
+          onOpenChange={(o) => !o && setDetailsId(null)}
+        />
       </DialogContent>
     </Dialog>
   );
