@@ -3,6 +3,7 @@ import type { PlanSettings } from "./plan";
 import type { PhotoReminderSettings } from "./photo-reminders";
 import type { ReminderSettings } from "./phrases";
 import type { AiSettings } from "./types";
+import type { BitrateLevel, DeviceCodec, DeviceFps, TranscodeMode } from "./video-rules";
 
 /** The subset of app state the settings page edits as a draft (before a save by the user). */
 export interface SettingsDraft {
@@ -17,6 +18,11 @@ export interface SettingsDraft {
   ffmpegKey: string;
   ffmpegOptions: string[];
   ffmpegOut: string;
+  /** On-device transcode settings (see video-rules). */
+  transcodeMode: TranscodeMode;
+  deviceCodec: DeviceCodec;
+  deviceBitrate: BitrateLevel;
+  deviceFps: DeviceFps;
 }
 
 /** Creates the draft snapshot from the current store state. */
@@ -32,6 +38,10 @@ export function pickDraft(s: AppState): SettingsDraft {
     ffmpegKey: s.ffmpegKey,
     ffmpegOptions: [...s.ffmpegOptions],
     ffmpegOut: s.ffmpegOut,
+    transcodeMode: s.transcodeMode,
+    deviceCodec: s.deviceCodec,
+    deviceBitrate: s.deviceBitrate,
+    deviceFps: s.deviceFps,
   };
 }
 
@@ -48,6 +58,10 @@ export function draftToState(d: SettingsDraft, plan: AppState["plan"]): Partial<
     ffmpegKey: d.ffmpegKey,
     ffmpegOptions: [...d.ffmpegOptions],
     ffmpegOut: d.ffmpegOut,
+    transcodeMode: d.transcodeMode,
+    deviceCodec: d.deviceCodec,
+    deviceBitrate: d.deviceBitrate,
+    deviceFps: d.deviceFps,
   };
 }
 

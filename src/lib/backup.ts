@@ -18,7 +18,7 @@ export const SECTIONS = {
   keys: {
     label: "Ключи",
     hint: "ИИ и ffmpeg",
-    keys: ["ai", "ffmpegKey", "ffmpegOptions", "ffmpegOut"],
+    keys: ["ai", "ffmpegKey", "ffmpegOptions", "ffmpegOut", "transcodeMode", "deviceCodec", "deviceBitrate", "deviceFps"],
   },
 } as const satisfies Record<string, { label: string; hint: string; keys: (keyof AppState)[] }>;
 export type SectionId = keyof typeof SECTIONS;

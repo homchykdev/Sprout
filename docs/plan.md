@@ -1,61 +1,115 @@
-# Plan: Workout builder preview/drag + plan cycle step preview
+# Plan: On-device video transcoding (Media3 + mediabunny), cloud as fallback
 
-## Что делаем (по 4 пунктам запроса)
+## User decisions (2026-11-09, override where noted)
 
-1. **Предпросмотр упражнений в конструкторе тренировки** (`WorkoutEditor`, `src/routes/plans.tsx`)
-   - Каждому пункту списка добавляем `ExerciseThumb` (фото/видео → постер YouTube → emoji),
-     как в библиотеке (`library.tsx:111`) и `SessionEditorSheet.tsx:90`. Размер `h-10 w-10`.
-   - Тап по имени упражнения → `ExerciseFullView` (диалог с медиа, описанием, шагами) — как в
-     `SessionEditorSheet`. Это и есть «предпросмотр того, что выполнять».
+- **Resolution is never reduced.** Device path keeps original pixel dimensions.
+- Levers, in order: 1) codec/format change, 2) bitrate, 3) fps -> 30 **only with
+  explicit confirmation** (settings select "Как есть" by default; choosing 30 asks a
+  confirm dialog). Default = keep fps.
+- **Bitrate: VBR, target = source bitrate x 0.4 (standard ~60% reduction), x 0.25 max
+  (~75-80% reduction)** — low-motion clips, modern codecs keep quality. Guard: bpp
+  floor and "skip conversion when gain < ~10%".
+- **No browser (Playwright) verification** — user waived DoD item 2; gates are
+  typecheck/lint/test/build + Android build note.
 
-2. **Drag-to-reorder вместо стрелочек** (в `WorkoutEditor`)
-   - Убираем кнопки ArrowUp/ArrowDown у пунктов, добавляем sortable через dnd-kit
-     (`SortableContext` + `useSortable` + grip-ручка), тот же паттерн, что в `PlanStepRow`.
-     dnd-kit уже в зависимостях (используется в `PlanEditor`), новых deps нет.
-   - Сенсоры: PointerSensor (distance 6) + KeyboardSensor — сохраняем доступность: ручка
-     получает aria-инструкции и работает со стрелками.
-   - Кнопка удаления (X) у пункта остаётся.
-   - `SessionEditorSheet` (стрелочки во время сессии) НЕ трогаем — там пункты «выполнено/сейчас»
-     и тап занимает другое место; запрос касался именно создания тренировки.
+- **Android (Capacitor build):** new local plugin on **Media3 Transformer** — hardware
+  MediaCodec encoding, ~3–6 MB APK growth (verify; enable R8 if over budget).
+- **Browser / WebView:** **mediabunny** (~0.2 MB, lazy-loaded) over WebCodecs.
+- **Cloud ffmpeg-api.com stays as fallback** (key + argv editor stay in Settings).
+- No new keys, no upload: video ≤30s/≤50MB is compressed on device before IndexedDB.
 
-3. **Фото-превью при выборе упражнения в пикере** (`WorkoutEditor`, inline-поиск)
-   - Строки списка «Добавить упражнение» рендерим как в библиотеке: `ExerciseThumb h-10 w-10`
-     + имя + категория/мышцы (компактно, одна строка-подпись `CATEGORIES[category]`).
-   - `CATEGORIES` уже экспортируется из `library.tsx` — переиспользуем (или переносим хелпер).
+Priority chain in `addFiles` (pure decision function, unit-tested):
 
-4. **Цикл плана: тап по шагу**
-   - `PlanStepRow`: добавляем проп `onOpen`, тап по контенту строки (не по ручке и не по X)
-     вызывает его. Тап-зона — кнопка-обёртка вокруг контента (a11y, >= 44px).
-   - **Шаг с тренировкой (exists)** → открываем новый `WorkoutPreviewDialog`
-     (`src/components/plans/WorkoutPreview.tsx`): название + emoji, длительность
-     (`estimateMinutes`), список упражнений с `ExerciseThumb h-12 w-12`, sets/reps/seconds,
-     отдых, ритм/темп, тап по упражнению → `ExerciseFullView`. Кнопка «Начать» →
-     navigate `/play/$workoutId` (как остальная навигация в plans, через TanStack Router).
-   - **Шаг с удалённой/недоступной тренировкой** (`missing`) → открываем тот же
-     `StepInsertSheet` на месте этого шага: в `PlanEditor` добавляем состояние
-     `replaceStepId`; `addStep` при `replaceStepId` сначала `removePlanStep(id)`,
-     потом `addPlanStep` на его индекс. Позиционный лейбл «вместо №N».
-   - Новые строки-пикеры в `StepInsertSheet` тоже показывают превью первых упражнений?
-     Нет — оставляем emoji+имя (вне запроса, не раздуваем дифф). Только workout preview
-     получает фото.
+```
+mode = "off"            -> store original
+mode = "device" (new default):
+  1. native + Media3 plugin available   -> plugin
+  2. WebCodecs + mediabunny can encode  -> mediabunny
+  3. cloud key present                  -> existing ffmpeg-api.com flow
+  4. store original
+mode = "cloud"          -> existing cloud flow -> original on failure
+```
 
-## Файлы
-- `src/routes/plans.tsx` — WorkoutEditor: thumbs, dnd-kit reorder, пикер с thumbs;
-  открыть preview из списка тренировок не требуется (только из цикла).
-- `src/components/plans/WorkoutPreview.tsx` — NEW: диалог предпросмотра тренировки.
-- `src/components/plans/PlanStepRow.tsx` — проп `onOpen`, тап по контенту.
-- `src/components/plans/PlanEditor.tsx` — `onOpen` (preview vs replace-sheet),
-  `WorkoutPreviewDialog` + `ExerciseFullView` навигация.
-- `docs/plan.md` — этот файл.
+## Target settings model (store v13 -> v14)
 
-## Риски
-- Вложенные интерактивы в пунктах конструктора (inputs) + dnd: ручка перетаскивания —
-  отдельный элемент с `touch-none`, inputs не рушат drag (проверено в PlanStepRow).
-- `key={i}` у пунктов конструктора: при драге React может пересортировать DOM неверно —
-  поменяем key на `exerciseId + индекс-стабильный` (не меняя поведение данных).
-- Persist store v13 не меняется — новая логика только UI.
+New fields (zustand persist, `src/lib/store.ts` + migration + backup keys):
 
-## Проверка
-- `pnpm typecheck && pnpm lint && pnpm test && pnpm build`.
-- Dev server + Playwright: создать тренировку (drag, превью, пикер), цикл: тап по
-  тренировке → preview; тап по удалённой → sheet вставки. Скриншоты 390/1440, консоль.
+- `transcodeMode: "device" | "cloud" | "off"` — default `"device"`
+- `deviceCodec: "auto" | "hevc" | "vp9" | "avc"` — default `"auto"`
+  (auto = try av1 -> hevc -> vp9 -> avc via capability probe; av1 rarely available on device)
+- Existing `ffmpegKey / ffmpegOptions / ffmpegOut` unchanged (cloud fallback + advanced argv).
+- Existing simple fields (`scale`, `fps`) reused for the device path; ffmpeg `codec`
+  preset select stays cloud-only.
+
+`src/lib/video-rules.ts` gains pure mappings (no DOM): settings -> mediabunny options
+(height/fps/codec list/quality), settings -> plugin params, and the priority-chain
+decision function given a capabilities object. All unit-testable without a browser.
+
+## Steps (each ends with a green build + commit)
+
+1. **feat: pure transcode decision + settings model**
+   - `src/lib/video-rules.ts`: `TranscodePath`, `pickTranscodePath(caps, opts)`,
+     `deviceHeight(scale)`, `codecPreferenceList(deviceCodec)`.
+   - `src/lib/store.ts`: v14 migration, new fields, `TranscodeOpts` update.
+   - `src/lib/backup.ts` + `__tests__/backup.test.ts`: carry new keys.
+   - Tests: `__tests__/transcode.test.ts` (decision chain, mappings).
+
+2. **feat: mediabunny local conversion (web path)**
+   - `pnpm/npm i mediabunny` (zero-dep, lazy `import()` like `heic2any`).
+   - New `src/lib/transcode.ts`: `convertVideoLocal(file, opts, onProgress)` with same
+     `ConvertedVideo` shape as cloud `convertVideo`; capability probe
+     (`getFirstEncodableVideoCodec`), MP4/WebM container auto-match.
+   - Wire into `src/lib/media.ts` `addFiles` chain; gallery passes new opts.
+
+3. **feat: Media3 Transformer Capacitor plugin (Android path)**
+   - `android/app/src/main/java/sports/sprout/app/TranscodePlugin.kt`:
+     `@CapacitorPlugin(name="Media3Transcode")`; `convert(inputPath, height, fps, mime)`
+     -> output path; progress events; on encoder failure retry H264, then reject.
+     Gradle: `androidx.media3:media3-transformer` + `media3-effect` (versions from
+     current docs at implementation time).
+   - `@capacitor/filesystem` (official, tiny) to move blob <-> cache file across bridge.
+   - New `src/lib/native-transcode.ts` (pattern of `native-tts.ts`): bridge wrapper,
+     graceful absence when not native.
+   - Wire into the decision chain before mediabunny.
+
+4. **feat: settings UI for transcode mode**
+   - `src/components/game/settings/VideoGroup.tsx`: mode switch (На устройстве /
+     Облако / Выкл), device codec select; cloud key + argv editor visible when
+     mode allows cloud. Update copy.
+
+5. **chore: verify, screenshot, docs**
+   - Definition-of-done pass (below); APK size check before/after (R8 if > budget).
+
+## Files
+
+- New: `src/lib/transcode.ts`, `src/lib/native-transcode.ts`,
+  `android/.../TranscodePlugin.kt`, `__tests__/transcode.test.ts`
+- Edit: `store.ts`, `video-rules.ts`, `media.ts`, `backup.ts`, `gallery.tsx`,
+  `VideoGroup.tsx`, `backup.test.ts`, `android/app/build.gradle`, `package.json`
+- Untouched: `ffmpeg.ts` / `ffmpeg.functions.ts` (cloud fallback keeps working)
+
+## Risks
+
+- **Media3 fps control** (`FrameDropEffect`) — exact API to verify in docs; worst case
+  fps is honored only where the effect supports it (scale+codec still apply).
+- **AV1 on device**: mostly unavailable; auto mode falls to hevc/vp9 — compression
+  close to current AV1-webm default, much faster than CPU SVT-AV1.
+- **Base64 across the bridge** (≤50 MB files): two hops via cache files; acceptable
+  for 30 s clips, flagged if slow on real hardware.
+- **Old WebViews without WebCodecs**: handled by chain (Media3 -> cloud -> original).
+- **APK size**: Media3 artifacts ~3–6 MB; if over budget, enable R8 minification.
+- Several lockfiles exist (bun/pnpm/npm); install via npm to match `android:sync`.
+
+## Out of scope
+
+- Removing ffmpeg-api.com (stays as fallback), batch re-transcode of stored videos,
+  iOS plugin (Media3 is Android-only; iOS gets mediabunny path).
+
+## Verification
+
+1. `npm run typecheck && npm run lint && npm run test && npm run build`.
+2. Playwright: dev server, real .mp4 import at each mode; screenshot 390px + 1440px;
+   console clean; progress state while converting; failure path (broken file) shows
+   fallback/original.
+3. Android: `npm run android:sync` + build, convert on device, compare size
+   before/after, check battery/heat and APK delta.

@@ -43,4 +43,11 @@ describe("sectioned backup files", () => {
     expect("ffmpegOut" in f.data).toBe(true);
     expect(Array.isArray(f.data.ffmpegOptions)).toBe(true);
   });
+  it("keys section carries on-device transcode settings", () => {
+    const f = buildSingleFile("keys");
+    expect("transcodeMode" in f.data).toBe(true);
+    expect("deviceCodec" in f.data).toBe(true);
+    expect("deviceBitrate" in f.data).toBe(true);
+    expect("deviceFps" in f.data).toBe(true);
+  });
 });

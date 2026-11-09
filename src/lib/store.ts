@@ -2,7 +2,14 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { SEED_EXERCISES, SEED_WORKOUTS } from "./seed";
 import { DEFAULT_PLAN_SETTINGS, defaultPlan, planFromSchedule, reorderSteps } from "./plan";
-import { DEFAULT_FFMPEG_OPTIONS, DEFAULT_FFMPEG_OUT } from "./video-rules";
+import {
+  DEFAULT_FFMPEG_OPTIONS,
+  DEFAULT_FFMPEG_OUT,
+  type BitrateLevel,
+  type DeviceCodec,
+  type DeviceFps,
+  type TranscodeMode,
+} from "./video-rules";
 import { DEFAULT_PHOTO_REMINDER, type PhotoReminderSettings } from "./photo-reminders";
 import { DEFAULT_REMINDERS, migrateReminders, type ReminderSettings } from "./phrases";
 import {
@@ -33,6 +40,14 @@ export interface AppState {
   ffmpegOptions: string[];
   /** Output container for cloud video conversion (webm/mp4/webp). */
   ffmpegOut: string;
+  /** Where short videos are transcoded: on device (default), cloud, or off. */
+  transcodeMode: TranscodeMode;
+  /** Preferred device codec; "auto" tries av1 -> hevc -> vp9 -> avc. */
+  deviceCodec: DeviceCodec;
+  /** Device bitrate cut: standard ~60%, max ~75-80% of the source bitrate. */
+  deviceBitrate: BitrateLevel;
+  /** Device fps: keep original ("asis", default) or 30 after explicit confirmation. */
+  deviceFps: DeviceFps;
   reminders: ReminderSettings;
   lastNotified: string;
   /** Progress-photo reminder (every N days since the last photo). */
@@ -123,6 +138,10 @@ export const initialState: AppState = {
   ffmpegKey: "",
   ffmpegOptions: [...DEFAULT_FFMPEG_OPTIONS],
   ffmpegOut: "webm",
+  transcodeMode: "device",
+  deviceCodec: "auto",
+  deviceBitrate: "standard",
+  deviceFps: "asis",
   reminders: { ...DEFAULT_REMINDERS },
   lastNotified: "",
   photoReminder: { ...DEFAULT_PHOTO_REMINDER },
@@ -242,7 +261,7 @@ export const useApp = create<AppState & Actions>()(
     }),
     {
       name: "pulse-fit-v1",
-      version: 13,
+      version: 14,
       migrate: (persisted, from) =>
         migrateState(persisted as Partial<AppState>, from) as AppState & Actions,
     },
@@ -252,13 +271,21 @@ export const useApp = create<AppState & Actions>()(
 export const uid = () =>
   Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
 
-/** v1 -> v2: legacy muscle keys become body-map muscles; fill new fields. v2 -> v3: badges/medals seen + sound theme. v3 -> v4: single ai.apiKey becomes ai.keys array. v4 -> v5: ffmpegKey for cloud video conversion. v5 -> v6: tunable ffmpegOptions/ffmpegOut. v6 -> v7: MuscleWiki removed (mwKey dropped, "musclewiki" sources become custom). v7 -> v8: weekly schedule becomes the repeating plan cycle. v8 -> v9: progress-photo reminders. v9 -> v10: `onboarded` flag — existing installs skip the welcome wizard. v10 -> v11: user feedback (difficulty 1-10 + like/dislike) on exercises/workouts — optional fields, nothing to backfill. v11 -> v12: reminders become a workout window (start/end) + preferred workout time. v12 -> v13: optional tapped rhythm pattern (`rhythm`) on exercises and workout items — new optional fields, nothing to backfill. */
+/** v1 -> v2: legacy muscle keys become body-map muscles; fill new fields. v2 -> v3: badges/medals seen + sound theme. v3 -> v4: single ai.apiKey becomes ai.keys array. v4 -> v5: ffmpegKey for cloud video conversion. v5 -> v6: tunable ffmpegOptions/ffmpegOut. v6 -> v7: MuscleWiki removed (mwKey dropped, "musclewiki" sources become custom). v7 -> v8: weekly schedule becomes the repeating plan cycle. v8 -> v9: progress-photo reminders. v9 -> v10: `onboarded` flag — existing installs skip the welcome wizard. v10 -> v11: user feedback (difficulty 1-10 + like/dislike) on exercises/workouts — optional fields, nothing to backfill. v11 -> v12: reminders become a workout window (start/end) + preferred workout time. v12 -> v13: optional tapped rhythm pattern (`rhythm`) on exercises and workout items — new optional fields, nothing to backfill. v13 -> v14: on-device transcode settings (mode/codec/bitrate/fps). */
 export function migrateState(p: Partial<AppState>, from: number): Partial<AppState> {
   const out: Partial<AppState> = { ...p };
   // Fresh installs (unknown version) start the wizard; upgrades keep the old behaviour.
   if (typeof out.onboarded !== "boolean") out.onboarded = from > 0;
   delete (out as Record<string, unknown>)["mwKey"];
   delete (out as Record<string, unknown>)["schedule"];
+  if (from < 14) {
+    if (p.transcodeMode !== "device" && p.transcodeMode !== "cloud" && p.transcodeMode !== "off")
+      out.transcodeMode = "device";
+    if (p.deviceCodec !== "auto" && p.deviceCodec !== "av1" && p.deviceCodec !== "hevc" && p.deviceCodec !== "vp9" && p.deviceCodec !== "avc")
+      out.deviceCodec = "auto";
+    if (p.deviceBitrate !== "standard" && p.deviceBitrate !== "max") out.deviceBitrate = "standard";
+    if (p.deviceFps !== "asis" && p.deviceFps !== "30") out.deviceFps = "asis";
+  }
   if (out.exercises)
     out.exercises = out.exercises.map((e) =>
       (e as { source?: string }).source === "musclewiki" ? { ...e, source: "custom" } : e,

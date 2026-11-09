@@ -1,0 +1,7 @@
+https://capacitorjs.com/docs/apis/camera
+https://capacitorjs.com/docs/apis/motion
+https://capacitorjs.com/docs/apis/screen-orientation
+
+https://capacitorjs.com/docs/apis/push-notifications
+https://capacitorjs.com/docs/apis/health-fitness
+https://capacitorjs.com/docs/apis/haptics
