@@ -31,6 +31,7 @@ import type { PlanStep } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { PlanStepRow } from "./PlanStepRow";
 import { StepInsertSheet } from "./StepInsertSheet";
+import { WorkoutPreview } from "./WorkoutPreview";
 
 /** Thin tappable divider between cycle rows: tap "+", the sheet inserts here. */
 function InsertZone({ onInsert, hidden }: { onInsert: () => void; hidden: boolean }) {
@@ -60,6 +61,10 @@ export function PlanEditor() {
   const s = useApp();
   const steps = s.plan.steps;
   const [insertAfter, setInsertAfter] = useState<number | null>(null);
+  /** Step id whose place is being filled after its workout was removed/unavailable. */
+  const [replaceId, setReplaceId] = useState<string | null>(null);
+  /** Step id whose workout preview dialog is open. */
+  const [previewId, setPreviewId] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [recentIds, setRecentIds] = useState<string[]>([]);
   const [dragging, setDragging] = useState(false);
@@ -87,16 +92,30 @@ export function PlanEditor() {
     s.reorderPlanStep(from, to);
   };
 
-  /** Adds a step at the spot chosen in the sheet (insertAfter, -1 = prepend). */
+  /** Adds a step at the spot chosen in the sheet. With replaceId active it first
+   *  removes the unavailable step, then inserts on its place (position-label "вместо №N"). */
   const addStep = (step: PlanStep) => {
-    s.addPlanStep(insertAfter ?? steps.length - 1, step);
+    const replaceIdx = replaceId ? steps.findIndex((x) => x.id === replaceId) : -1;
+    if (replaceIdx >= 0 && replaceId) s.removePlanStep(replaceId);
+    s.addPlanStep(replaceIdx >= 0 ? replaceIdx - 1 : (insertAfter ?? steps.length - 1), step);
     if (step.kind === "workout" && step.workoutId)
       setRecentIds((ids) => [step.workoutId!, ...ids.filter((id) => id !== step.workoutId)]);
     setInsertAfter(null);
+    setReplaceId(null);
   };
 
-  const positionLabel =
-    insertAfter === null ? "" : insertAfter < 0 ? "в начало" : `после №${insertAfter + 1}`;
+  const positionLabel = replaceId
+    ? `вместо №${steps.findIndex((x) => x.id === replaceId) + 1}`
+    : insertAfter === null
+      ? ""
+      : insertAfter < 0
+        ? "в начало"
+        : `после №${insertAfter + 1}`;
+  const previewStep = previewId ? (steps.find((x) => x.id === previewId) ?? null) : null;
+  const previewWorkout =
+    previewStep?.kind === "workout" && previewStep.workoutId
+      ? (s.workouts.find((w) => w.id === previewStep.workoutId) ?? null)
+      : null;
 
   if (!steps.length)
     return (
@@ -108,10 +127,13 @@ export function PlanEditor() {
           <Plus className="h-4 w-4" /> Добавить первый шаг
         </TapButton>
         <StepInsertSheet
-          open={insertAfter !== null}
+          open={insertAfter !== null || replaceId !== null}
           positionLabel={positionLabel}
           recents={[]}
-          onClose={() => setInsertAfter(null)}
+          onClose={() => {
+            setInsertAfter(null);
+            setReplaceId(null);
+          }}
           onPickRest={() => addStep({ id: `step-${uid()}`, kind: "rest" })}
           onPickWorkout={(w) => addStep({ id: `step-${uid()}`, kind: "workout", workoutId: w.id })}
         />
@@ -159,11 +181,18 @@ export function PlanEditor() {
                         ? "Восстановление"
                         : w
                           ? `${w.items.length} упр. · ~${estimateMinutes(w, s.exercises)} мин`
-                          : "Тренировка удалена из библиотеки"
+                          : "Тренировка удалена — тапни, чтобы заменить"
                     }
                     missing={step.kind === "workout" && !w}
                     position={i + 1}
                     onDelete={() => setDeleteId(step.id)}
+                    onOpen={
+                      step.kind === "workout"
+                        ? w
+                          ? () => setPreviewId(step.id)
+                          : () => setReplaceId(step.id)
+                        : undefined
+                    }
                   />
                 </Fragment>
               );
@@ -173,16 +202,21 @@ export function PlanEditor() {
         </SortableContext>
       </DndContext>
       <p className="mt-3 text-xs text-muted-foreground">
-        Перетаскивай шаги за ручку, тапай «+» между строками, чтобы вставить в это место.
+        Перетаскивай шаги за ручку, тапай «+» между строками, чтобы вставить в это место, или тапни
+        по шагу — покажу всё, что в нём делать.
       </p>
       <StepInsertSheet
-        open={insertAfter !== null}
+        open={insertAfter !== null || replaceId !== null}
         positionLabel={positionLabel}
         recents={recents}
-        onClose={() => setInsertAfter(null)}
+        onClose={() => {
+          setInsertAfter(null);
+          setReplaceId(null);
+        }}
         onPickRest={() => addStep({ id: `step-${uid()}`, kind: "rest" })}
         onPickWorkout={(w) => addStep({ id: `step-${uid()}`, kind: "workout", workoutId: w.id })}
       />
+      <WorkoutPreview workout={previewWorkout} onClose={() => setPreviewId(null)} />
       <AlertDialog open={pending !== null} onOpenChange={(o) => !o && setDeleteId(null)}>
         <AlertDialogContent className="rounded-3xl sm:max-w-sm">
           <AlertDialogHeader>

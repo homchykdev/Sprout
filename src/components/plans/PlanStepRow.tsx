@@ -15,6 +15,8 @@ export interface PlanStepRowProps {
   missing?: boolean;
   position: number;
   onDelete: () => void;
+  /** Tap on the row content (grip and delete excluded) opens the step. */
+  onOpen?: (() => void) | undefined;
 }
 
 /** One draggable card of the plan cycle: grip handle · content · delete. */
@@ -26,11 +28,50 @@ export function PlanStepRow({
   missing = false,
   position,
   onDelete,
+  onOpen,
 }: PlanStepRowProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: step.id,
   });
   const rest = step.kind === "rest";
+  const tile = (
+    <span
+      className={cn(
+        "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-lg",
+        rest ? "bg-muted text-muted-foreground" : "bg-primary-soft",
+      )}
+    >
+      {rest ? (
+        <BedDouble className="h-5 w-5" />
+      ) : missing ? (
+        <TriangleAlert className="h-5 w-5 text-destructive" />
+      ) : (
+        emoji
+      )}
+    </span>
+  );
+  const text = (
+    <div className="min-w-0 flex-1">
+      <p className="truncate font-semibold">{title}</p>
+      <p className="text-xs text-muted-foreground">{detail}</p>
+    </div>
+  );
+  const content =
+    onOpen && !rest ? (
+      <button
+        onClick={onOpen}
+        className="press flex min-w-0 flex-1 items-center gap-1.5 rounded-xl py-2 text-left focus-visible:outline-2"
+        aria-label={missing ? `Заменить шаг ${position}` : `Предпросмотр шага ${position}`}
+      >
+        {tile}
+        {text}
+      </button>
+    ) : (
+      <div className="flex min-w-0 flex-1 items-center gap-1.5">
+        {tile}
+        {text}
+      </div>
+    );
   return (
     <div
       ref={setNodeRef}
@@ -49,24 +90,7 @@ export function PlanStepRow({
       >
         <GripVertical className="h-4 w-4" />
       </button>
-      <span
-        className={cn(
-          "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-lg",
-          rest ? "bg-muted text-muted-foreground" : "bg-primary-soft",
-        )}
-      >
-        {rest ? (
-          <BedDouble className="h-5 w-5" />
-        ) : missing ? (
-          <TriangleAlert className="h-5 w-5 text-destructive" />
-        ) : (
-          emoji
-        )}
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="truncate font-semibold">{title}</p>
-        <p className="text-xs text-muted-foreground">{detail}</p>
-      </div>
+      {content}
       <TapButton size="icon" variant="ghost" aria-label="Удалить шаг" onClick={onDelete}>
         <X className="h-4 w-4" />
       </TapButton>
